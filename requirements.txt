@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pydantic==2.5.0
+requests
+python-docx==0.8.11
+python-multipart==0.0.6 

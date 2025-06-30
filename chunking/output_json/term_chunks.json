@@ -1,0 +1,477 @@
+[
+  {
+    "term": "Nơi ở hiện tại/ Nơi cư trú /Cư ngụ)",
+    "definition": "là nơi thường trú hoặc nơi tạm trú mà công dân đang thường xuyên sinh sống; trường hợp không có nơi thường trú, nơi tạm trú thì nơi ở hiện tại là nơi công dân đang thực tế sinh sống",
+    "category": "term"
+  },
+  {
+    "term": "Nơi thường trú",
+    "definition": "là nơi công dân sinh sống ổn định, lâu dài và đã được đăng ký thường trú",
+    "category": "term"
+  },
+  {
+    "term": "Nơi tạm trú",
+    "definition": "là nơi công dân sinh sống trong một khoảng thời gian nhất định (tối đa 2 năm, có thể gia hạn) ngoài nơi thường trú và đã được đăng ký tạm trú\".",
+    "category": "term"
+  },
+  {
+    "term": "Nơi lưu trú",
+    "definition": "là việc công dân ở lại một địa điểm không phải nơi thường trú hoặc nơi tạm trú trong thời gian ít hơn 30 ngày",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú hợp pháp",
+    "definition": "Việc sinh sống tại nơi có giấy tờ chứng minh quyền sử dụng hợp pháp và được đăng ký theo quy định.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú bất hợp pháp",
+    "definition": "Sinh sống tại nơi không được phép hoặc không khai báo với cơ quan chức năng.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú thực tế",
+    "definition": "Việc công dân thực sự sinh sống tại nơi đã khai báo cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú không khai báo",
+    "definition": "Ở tại nơi cư trú nhưng không thực hiện thủ tục đăng ký theo quy định.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú trái phép",
+    "definition": "Tương tự cư trú bất hợp pháp, thường dùng trong văn bản xử lý vi phạm.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú hợp lệ",
+    "definition": "Cư trú đúng quy định, có đầy đủ giấy tờ và khai báo.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú không có nơi ở ổn định",
+    "definition": "Trường hợp người vô gia cư hoặc không có chỗ ở cố định.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại phương tiện lưu động",
+    "definition": "Nhà ở trên tàu, xe, thuyền… có thể đăng ký cư trú. Nơi cư trú của người sinh sống, người làm nghề lưu động trên tàu, thuyền hoặc phương tiện khác có khả năng di chuyển (sau đây gọi chung là phương tiện) là nơi đăng ký phương tiện đó, trừ trường hợp có nơi cư trú khác theo quy định của Luật này. Đối với phương tiện không phải đăng ký hoặc có nơi đăng ký phương tiện không trùng với nơi thường xuyên đậu, đỗ thì nơi cư trú của người sinh sống, người làm nghề lưu động là nơi phương tiện đó thường xuyên đậu, đỗ.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại cơ sở tôn giáo",
+    "definition": "Ở tại chùa, nhà thờ, tu viện… nếu có công trình phụ trợ đủ điều kiện.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại cơ sở trợ giúp xã hội",
+    "definition": "Ở tại trung tâm bảo trợ xã hội, nhà tình thương…",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại cơ sở giáo dục",
+    "definition": "Sinh viên, học sinh cư trú tại ký túc xá hoặc nơi học tập.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại cơ sở y tế",
+    "definition": "Người điều trị dài ngày tại bệnh viện có thể đăng ký cư trú tạm thời.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận thông tin cư trú",
+    "definition": "là văn bản do cơ quan đăng ký cư trú cấp để xác nhận thông tin cư trú của công dân, đóng vai trò thay thế tạm thời cho sổ hộ khẩu và sổ tạm trú giấy đã bị bãi bỏ",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận tạm trú",
+    "definition": "Đây là văn bản do cơ quan có thẩm quyền (thường là công an cấp xã, phường, thị trấn) cấp để xác nhận việc một cá nhân đã đăng ký tạm trú tại một địa điểm nhất định trong một khoảng thời gian cụ thể, không phải là nơi cư trú thường xuyên của họ.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận tạm vắng",
+    "definition": "Là văn bản do công an cấp xã, phường, thị trấn cấp, xác nhận việc một cá nhân đã đăng ký tạm vắng tại địa phương nơi họ đang cư trú (thường xuyên hoặc tạm trú) để đi đến một địa điểm khác trong một khoảng thời gian nhất định.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận lưu trú",
+    "definition": "Là văn bản xác nhận việc một người đang tạm thời ở lại một địa điểm nào đó (ví dụ: khách sạn, nhà nghỉ, nhà riêng của người quen) trong một thời gian ngắn, thường không mang tính chất ổn định và không cần đăng ký tạm trú. Giấy này thường được cấp bởi cơ sở lưu trú hoặc công an địa phương khi có yêu cầu.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận cư trú thực tế",
+    "definition": "Là văn bản do cơ quan công an có thẩm quyền xác nhận về việc một cá nhân đang thực tế sinh sống và cư trú tại một địa chỉ cụ thể, dù có thể địa chỉ đó không phải là nơi đăng ký thường trú hoặc tạm trú chính thức của họ trên giấy tờ. Giấy này thường được yêu cầu trong các trường hợp cần chứng minh nơi ở hiện tại.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận cư trú cho người nước ngoài",
+    "definition": "Là văn bản do cơ quan quản lý xuất nhập cảnh hoặc công an địa phương cấp để xác nhận về địa điểm cư trú hợp pháp của người nước ngoài tại Việt Nam. Giấy này thường đi kèm với thị thực (visa) hoặc thẻ tạm trú của người nước ngoài.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận không có nơi cư trú",
+    "definition": "Là văn bản do công an cấp xã, phường, thị trấn nơi một người sinh sống hoặc có liên quan cấp, xác nhận rằng người đó hiện không có nơi cư trú hợp pháp hoặc không thể xác định được nơi cư trú ổn định. Giấy này thường được sử dụng trong các thủ tục pháp lý liên quan đến người vô gia cư hoặc không có địa chỉ rõ ràng.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận của chủ hộ",
+    "definition": "Là văn bản do chủ hộ gia đình lập và ký, xác nhận về mối quan hệ nhân thân hoặc việc cư trú của một cá nhân tại địa chỉ do chủ hộ quản lý. Giấy này thường được sử dụng trong các thủ tục hành chính nội bộ gia đình hoặc khi cần xác minh thông tin với chính quyền địa phương.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy xác nhận của chính quyền địa phương",
+    "definition": "Là văn bản do Ủy ban nhân dân cấp xã, phường, thị trấn hoặc công an cấp xã, phường, thị trấn cấp, xác nhận về một vấn đề, sự việc, hoặc thông tin cụ thể liên quan đến một cá nhân hoặc hộ gia đình trên địa bàn. Loại giấy này rất đa dạng, tùy thuộc vào mục đích sử dụng.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy tờ chứng minh chỗ ở hợp pháp",
+    "definition": "Đây là các loại giấy tờ mà cá nhân, tổ chức sử dụng để chứng minh quyền sở hữu, quyền sử dụng hoặc quyền thuê nhà ở, đất ở một cách hợp pháp. Ví dụ: Sổ hồng (Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất), hợp đồng mua bán nhà, hợp đồng thuê nhà, giấy phép xây dựng (đối với nhà tự xây),...",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT01 (Tờ khai thay đổi thông tin cư trú)",
+    "definition": "là mẫu đơn dùng để khai báo khi có thay đổi về nơi ở.",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT02",
+    "definition": "là tờ khai thay đổi thông tin cư trú dành cho người Việt Nam định cư ở nước ngoài về Việt Nam, sử dụng khi nhập cảnh vào Việt Nam lần gần nhất bằng hộ chiếu hoặc giấy tờ thay thế hộ chiếu do nước ngoài cấp hoặc giấy tờ khác do cơ quan có thẩm quyền cấp.",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT03",
+    "definition": "là phiếu khai báo tạm vắng, được sử dụng để công dân khai báo việc rời khỏi nơi cư trú tạm thời.",
+    "category": "term"
+  },
+  {
+    "term": "Biểu mẫu HK01 (Bản khai nhân khẩu)",
+    "definition": "là một loại giấy tờ hành chính được sử dụng trong thủ tục đăng ký, quản lý cư trú tại Việt Nam",
+    "category": "term"
+  },
+  {
+    "term": "Biểu mẫu HK02 (Phiếu báo thay đổi hộ khẩu, nhân khẩu)",
+    "definition": "là một loại giấy tờ hành chính được sử dụng trong các thủ tục liên quan đến đăng ký, thay đổi, và quản lý thông tin cư trú của cá nhân và hộ gia đình tại Việt Nam.",
+    "category": "term"
+  },
+  {
+    "term": "Biểu mẫu HK03 (Phiếu xác minh hộ khẩu, nhân khẩu)",
+    "definition": "là một loại giấy tờ được sử dụng trong việc đăng ký và quản lý cư trú tại Việt Nam",
+    "category": "term"
+  },
+  {
+    "term": "Biểu mẫu HK05 (Phiếu khai báo tạm vắng)",
+    "definition": "là một loại biểu mẫu được sử dụng để người dân khai báo với Công an xã, phường, thị trấn nơi mình cư trú khi có tạm vắng, tức là không có mặt tại nơi thường trú trong một khoảng thời gian nhất định.",
+    "category": "term"
+  },
+  {
+    "term": "Biểu mẫu CT04 (Phiếu tiếp nhận hồ sơ và hẹn trả kết quả đăng ký cư trú)",
+    "definition": "là mẫu đơn sử dụng trong quá trình đăng ký thường trú, tạm trú, hoặc các thủ tục liên quan đến cư trú, nhằm xác nhận việc cơ quan có thẩm quyền đã tiếp nhận hồ sơ và thông báo thời gian trả kết quả.",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT05 (Phiếu hướng dẫn bổ sung, hoàn thiện hồ sơ đăng ký cư trú.)",
+    "definition": "là mẫu đơn này được sử dụng khi hồ sơ đăng ký cư trú của công dân chưa đầy đủ thành phần theo quy định, và cơ quan đăng ký cư trú sẽ hướng dẫn công dân bổ sung, hoàn thiện hồ sơ.",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT06 (Phiếu từ chối tiếp nhận, giải quyết hồ sơ cư trú)",
+    "definition": "là mẫu đơn này được sử dụng khi cơ quan công an từ chối tiếp nhận hoặc giải quyết các thủ tục liên quan đến đăng ký cư trú, tạm trú, điều chỉnh thông tin cư trú, hoặc khai báo thông tin cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Mẫu CT09 (Quyết định về việc hủy bỏ thủ tục về cư trú)",
+    "definition": "là mẫu đơn được sử dụng bởi cơ quan có thẩm quyền để hủy bỏ đăng ký thường trú hoặc tạm trú của công dân khi việc đăng ký đó không đúng thẩm quyền, không đúng đối tượng, hoặc không đúng điều kiện theo quy định của pháp luật về cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Thủ tục đăng ký thường trú",
+    "definition": "là quy trình pháp lý để đăng ký nơi ở lâu dài.",
+    "category": "term"
+  },
+  {
+    "term": "Thủ tục đăng ký tạm trú",
+    "definition": "là quy trình đăng ký nơi ở tạm thời ngoài nơi thường trú.",
+    "category": "term"
+  },
+  {
+    "term": "Mã định danh cá nhân",
+    "definition": "cũng chính là sổ thẻ Căn cước công dân (12 số), được cấp cho mỗi công dân từ khi sinh ra đến khi mất, không lặp lại ở người khác.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy khai sinh",
+    "definition": "là một loại giấy tờ hộ tịch gốc, được cấp bởi cơ quan nhà nước có thẩm quyền, ghi nhận sự kiện một người được sinh ra. Nó chứa đựng các thông tin cơ bản như họ tên, ngày tháng năm sinh, nơi sinh, dân tộc, quốc tịch, và các thông tin liên quan đến quan hệ cha mẹ con của người đó.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy chứng minh nhân dân (CMND)",
+    "definition": "là một loại giấy tờ tùy thân của công dân Việt Nam, do cơ quan nhà nước có thẩm quyền cấp, nhằm xác nhận các thông tin cơ bản về danh tính, quốc tịch và các đặc điểm cá nhân của người đó.",
+    "category": "term"
+  },
+  {
+    "term": "Căn cước công dân (CCCD), hay còn gọi là thẻ căn cước",
+    "definition": "là một loại giấy tờ tùy thân do cơ quan nhà nước có thẩm quyền cấp cho công dân Việt Nam, dùng để chứng minh thông tin cá nhân và lai lịch của người đó. Thẻ căn cước công dân chứa đựng các thông tin cơ bản như họ tên, ngày tháng năm sinh, quê quán, nơi thường trú, số định danh cá nhân, ảnh chân dung và vân tay.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy tờ chứng minh nhân thân",
+    "definition": "là những giấy tờ tùy thân được sử dụng để xác định danh tính và thông tin cá nhân của một người. Chúng bao gồm các loại giấy tờ như Căn cước công dân, Chứng minh nhân dân (nếu vẫn còn hiệu lực), Hộ chiếu, và các loại giấy tờ khác có giá trị tương đương do cơ quan có thẩm quyền cấp.",
+    "category": "term"
+  },
+  {
+    "term": "Giấy tờ chứng minh quan hệ nhân thân",
+    "definition": "là các loại giấy tờ, tài liệu được sử dụng để xác nhận mối quan hệ giữa các cá nhân, bao gồm quan hệ huyết thống (cha mẹ, con cái, anh chị em), quan hệ hôn nhân (vợ chồng), hoặc quan hệ nuôi dưỡng. Các giấy tờ này thường được yêu cầu trong các thủ tục hành chính, pháp lý hoặc giao dịch dân sự.",
+    "category": "term"
+  },
+  {
+    "term": "Hộ khẩu",
+    "definition": "Là giấy tờ pháp lý ghi nhận thông tin cư trú (mặc dù hiện nay đã và đang được số hóa theo lộ trình).",
+    "category": "term"
+  },
+  {
+    "term": "Tách hộ khẩu",
+    "definition": "là thủ tục hành chính nhằm tách thông tin cư trú khỏi hộ gia đình gốc.",
+    "category": "term"
+  },
+  {
+    "term": "Chuyển hộ khẩu",
+    "definition": "là thủ tục hành chính nhằm thay đổi nơi đăng ký thường trú.",
+    "category": "term"
+  },
+  {
+    "term": "Xóa đăng ký thường trú",
+    "definition": "là thủ tục hành chính nhằm loại bỏ đăng ký thường trú của công dân khỏi Cơ sở dữ liệu về cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện lao động",
+    "definition": "Là việc công dân hoặc người nước ngoài sinh sống tại một địa điểm (thường trú hoặc tạm trú) với mục đích làm việc, lao động. Đối với người nước ngoài, việc cư trú này thường gắn liền với giấy phép lao động và các quy định về thị thực, thẻ tạm trú. Đối với công dân Việt Nam, đây là một trong những lý do chính để đăng ký cư trú tại nơi làm việc hoặc khu vực lân cận.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện học tập",
+    "definition": "Là việc công dân hoặc người nước ngoài sinh sống tại một địa điểm (thường trú hoặc tạm trú) với mục đích học tập tại các trường học, cơ sở giáo dục. Sinh viên, học sinh, nghiên cứu sinh thường đăng ký tạm trú tại ký túc xá, nhà trọ hoặc nơi ở gần trường. Đối với người nước ngoài, diện cư trú này gắn liền với thị thực du học và thời gian học tập.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện tái định cư",
+    "definition": "Là việc công dân được Nhà nước bố trí đến sinh sống ổn định tại một địa điểm mới do nơi ở cũ bị thu hồi để thực hiện các dự án phát triển kinh tế - xã hội, phòng chống thiên tai, hoặc các lý do khác. Người dân tái định cư thường nhận được sự hỗ trợ về đất ở, nhà ở, hoặc các chính sách an sinh xã hội để ổn định cuộc sống tại nơi ở mới.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện người nước ngoài",
+    "definition": "Là việc công dân mang quốc tịch nước ngoài sinh sống và lưu trú hợp pháp tại Việt Nam. Việc cư trú này tuân thủ các quy định riêng biệt của pháp luật Việt Nam về xuất nhập cảnh, thị thực, thẻ tạm trú, thẻ thường trú, và các quy định về quản lý người nước ngoài.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện người cao tuổi",
+    "definition": "Là việc người cao tuổi (từ đủ 60 tuổi trở lên theo Luật Người cao tuổi) sinh sống tại một địa điểm. Mặc dù không có quy định riêng biệt về nơi cư trú cho người cao tuổi, nhưng Nhà nước và xã hội có những chính sách hỗ trợ về chăm sóc sức khỏe, an sinh xã hội cho đối tượng này, đôi khi bao gồm cả việc ưu tiên trong một số chính sách về nhà ở xã hội hoặc cơ sở bảo trợ xã hội.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện người khuyết tật",
+    "definition": "Là việc người khuyết tật sinh sống tại một địa điểm. Tương tự như người cao tuổi, không có quy định riêng về nơi cư trú, nhưng người khuyết tật được hưởng các chính sách hỗ trợ của Nhà nước về y tế, giáo dục, việc làm và an sinh xã hội, có thể liên quan đến việc tiếp cận nhà ở phù hợp hoặc các cơ sở bảo trợ xã hội.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện tái hòa nhập cộng đồng",
+    "definition": "Là việc cá nhân sau khi chấp hành xong án phạt tù, hoặc hoàn thành các biện pháp xử lý hành chính như đưa vào cơ sở giáo dục, trường giáo dưỡng, trở về sinh sống tại địa phương và hòa nhập lại với cuộc sống cộng đồng. Chính quyền địa phương và các tổ chức xã hội thường có chương trình hỗ trợ, giám sát để giúp họ ổn định nơi cư trú và tìm kiếm việc làm.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo diện bị quản chế",
+    "definition": "Là việc cá nhân bị Tòa án áp dụng hình phạt bổ sung \"quản chế\" sau khi chấp hành xong án phạt tù về một số tội danh đặc biệt. Người bị quản chế phải cư trú tại một địa điểm nhất định do chính quyền địa phương chỉ định, chịu sự giám sát, giáo dục của chính quyền và nhân dân địa phương trong một thời gian nhất định, và bị cấm đi khỏi nơi cư trú đó nếu không được phép.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu công nghiệp",
+    "definition": "Là việc công dân sinh sống (thường trú hoặc tạm trú) trong khu vực địa lý được quy hoạch dành riêng cho mục đích sản xuất công nghiệp. Thông thường, việc cư trú tại đây có thể là do công nhân, cán bộ làm việc trong các nhà máy, xí nghiệp sống tại ký túc xá, nhà ở tập thể do công ty xây dựng hoặc các khu nhà ở liền kề phục vụ khu công nghiệp. Việc quản lý cư trú tại đây thường chặt chẽ để đảm bảo an ninh, trật tự và phục vụ hoạt động sản xuất.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu đô thị mới",
+    "definition": "Là việc công dân sinh sống (thường trú hoặc tạm trú) tại các khu vực đô thị được quy hoạch và xây dựng mới hoàn toàn hoặc cải tạo nâng cấp lớn từ các khu vực hiện có. Các khu đô thị mới thường có hạ tầng đồng bộ, hiện đại, bao gồm nhà ở, trường học, bệnh viện, khu vui chơi giải trí, và các tiện ích công cộng khác. Việc cư trú tại đây thường tuân theo các quy định chung về quản lý cư trú của đô thị, nhưng có thể có những chính sách hỗ trợ hoặc ưu đãi riêng về nhà ở, đất đai trong giai đoạn đầu phát triển.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại vùng sâu, vùng xa",
+    "definition": "Là việc công dân sinh sống (thường trú hoặc tạm trú) tại các khu vực có điều kiện địa lý, giao thông, kinh tế - xã hội khó khăn, kém phát triển, cách xa trung tâm hành chính, kinh tế. Các vùng này thường đối mặt với thách thức về hạ tầng, dịch vụ y tế, giáo dục. Chính phủ và các tổ chức thường có những chính sách đặc thù nhằm hỗ trợ người dân sinh sống, phát triển kinh tế và đảm bảo an sinh xã hội tại các khu vực này.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu vực biên giới",
+    "definition": "Là việc công dân sinh sống (thường trú hoặc tạm trú) tại các xã, phường, thị trấn có đường biên giới quốc gia trên đất liền. Việc cư trú tại đây thường có những quy định riêng biệt về đăng ký, quản lý để đảm bảo an ninh, quốc phòng và trật tự an toàn xã hội khu vực biên giới.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu vực cấm quân sự",
+    "definition": "Là việc công dân sinh sống trong phạm vi các khu vực quân sự do Bộ Quốc phòng quản lý, được quy định là khu vực cấm. Việc cư trú tại đây bị hạn chế nghiêm ngặt và chỉ những đối tượng được phép mới được sinh sống, thường là cán bộ, chiến sĩ, công nhân viên quốc phòng và gia đình họ, tuân thủ các quy định đặc thù về an ninh, quốc phòng.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu vực an ninh",
+    "definition": "Khái niệm này có thể hiểu rộng là việc cư trú tại các khu vực được quy định có tầm quan trọng đặc biệt về an ninh, trật tự, quốc phòng, nơi có thể áp dụng các biện pháp quản lý chặt chẽ hơn so với các khu vực thông thường. Ví dụ như khu vực xung quanh các mục tiêu quan trọng về an ninh, các khu vực cấm, khu vực bảo vệ theo quy định pháp luật. Việc cư trú tại đây sẽ chịu sự quản lý và giám sát đặc biệt.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại khu vực tạm cư",
+    "definition": "Là việc công dân sinh sống tạm thời tại các địa điểm được quy hoạch, bố trí để người dân di dời đến khi thực hiện các dự án giải tỏa, xây dựng hoặc do thiên tai, dịch bệnh. Việc cư trú tại khu vực này mang tính chất tạm thời, có thời hạn nhất định và thường được chính quyền địa phương quản lý chặt chẽ về số lượng, đối tượng và thời gian.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại nơi làm việc",
+    "definition": "Là trường hợp người lao động sinh sống tại chính địa điểm họ làm việc, thường là các khu ký túc xá công ty, nhà ở công vụ gắn liền với địa điểm làm việc, hoặc các cơ sở sản xuất, dịch vụ có chỗ ở cho nhân viên. Việc cư trú này thường phục vụ mục đích công việc và có thể được xem xét là nơi tạm trú nếu đáp ứng đủ điều kiện theo Luật Cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại nhà thuê",
+    "definition": "Là việc công dân sinh sống tại một căn nhà hoặc phòng trọ mà họ thuê của chủ sở hữu. Đây là hình thức cư trú phổ biến, và người thuê có nghĩa vụ đăng ký tạm trú (nếu thời gian thuê dài hạn) hoặc thông báo lưu trú (nếu thuê ngắn hạn) theo quy định của Luật Cư trú và các văn bản hướng dẫn.",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú tại nhà ở xã hội",
+    "definition": "Là việc công dân sinh sống tại các dự án nhà ở được đầu tư xây dựng với sự hỗ trợ của Nhà nước nhằm giải quyết nhu cầu về nhà ở cho các đối tượng được hưởng chính sách hỗ trợ về nhà ở theo quy định. Người dân cư trú tại nhà ở xã hội phải đáp ứng các tiêu chí cụ thể về thu nhập, điều kiện nhà ở hiện có và các điều kiện khác do pháp luật quy định.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan đăng ký cư trú",
+    "definition": "Đây là cơ quan nhà nước có thẩm quyền thực hiện việc tiếp nhận hồ sơ, giải quyết các thủ tục liên quan đến đăng ký thường trú, tạm trú, thông báo lưu trú, khai báo tạm vắng, điều chỉnh thông tin cư trú, và các hoạt động quản lý cư trú khác của công dân. Theo quy định của Luật Cư trú, công an cấp xã, phường, thị trấn là cơ quan trực tiếp thực hiện chức năng này.",
+    "category": "term"
+  },
+  {
+    "term": "Công an xã/phường",
+    "definition": "Là cấp cơ sở của lực lượng Công an nhân dân, đóng vai trò trực tiếp trong việc thực hiện các thủ tục hành chính về cư trú tại địa bàn mình phụ trách. Đây là nơi người dân đến để làm các thủ tục đăng ký thường trú, tạm trú, khai báo tạm vắng, thông báo lưu trú, và các yêu cầu khác liên quan đến quản lý cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ sở dữ liệu quốc gia về dân cư",
+    "definition": "Là hệ thống thông tin tổng hợp, quản lý tập trung và thống nhất các thông tin cơ bản của tất cả công dân Việt Nam. Cơ sở dữ liệu này được xây dựng và duy trì bởi Bộ Công an, đóng vai trò quan trọng trong việc quản lý dân cư, phục vụ các hoạt động hành chính công, phát triển kinh tế - xã hội và bảo đảm an ninh quốc gia. Đây là nền tảng cho việc bỏ sổ hộ khẩu giấy.",
+    "category": "term"
+  },
+  {
+    "term": "Cổng Dịch vụ công Quốc gia",
+    "definition": "Là một cổng thông tin điện tử do Văn phòng Chính phủ quản lý, cho phép cá nhân và tổ chức thực hiện các thủ tục hành chính công trực tuyến. Đối với lĩnh vực cư trú, công dân có thể nộp hồ sơ đăng ký thường trú, tạm trú, hoặc tra cứu thông tin liên quan thông qua cổng này, giảm bớt thời gian và chi phí đi lại.",
+    "category": "term"
+  },
+  {
+    "term": "Hệ thống quản lý cư trú",
+    "definition": "Là tổng thể các quy định pháp luật, quy trình nghiệp vụ, cơ cấu tổ chức và công nghệ thông tin (bao gồm Cơ sở dữ liệu quốc gia về dân cư) được xây dựng để thực hiện việc đăng ký, theo dõi, kiểm soát và thống kê tình hình cư trú của công dân trên phạm vi toàn quốc. Mục tiêu là đảm bảo quản lý dân cư hiệu quả, minh bạch.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan quản lý xuất nhập cảnh",
+    "definition": "Là cơ quan thuộc Bộ Công an, chịu trách nhiệm quản lý các hoạt động xuất cảnh, nhập cảnh, quá cảnh, cư trú của người nước ngoài và công dân Việt Nam ra nước ngoài, từ nước ngoài về nước. Đối với người nước ngoài, cơ quan này cấp các loại thị thực, thẻ tạm trú, thẻ thường trú và quản lý việc cư trú của họ tại Việt Nam.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan quản lý người nước ngoài",
+    "definition": "Thuật ngữ này thường dùng để chỉ chung các cơ quan nhà nước có trách nhiệm quản lý hoạt động của người nước ngoài tại Việt Nam, trong đó bao gồm cả Cơ quan quản lý xuất nhập cảnh về mặt cư trú, lưu trú, và các cơ quan khác như Bộ Lao động - Thương binh và Xã hội (về giấy phép lao động), Sở Ngoại vụ (về các hoạt động ngoại giao),...",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan quản lý hành chính",
+    "definition": "Đây là một thuật ngữ rộng, chỉ chung các cơ quan nhà nước (từ trung ương đến địa phương) thực hiện chức năng quản lý nhà nước về mọi mặt đời sống xã hội. Trong lĩnh vực cư trú, Công an cấp xã/phường, Cơ quan đăng ký cư trú là những ví dụ cụ thể của cơ quan quản lý hành chính.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan cấp giấy tờ cư trú",
+    "definition": "Là cơ quan có thẩm quyền ban hành các loại giấy tờ xác nhận thông tin về cư trú của công dân. Trước đây là sổ hộ khẩu, sổ tạm trú, hiện nay là các loại giấy xác nhận thông tin cư trú, thông báo kết quả giải quyết thủ tục đăng ký cư trú. Chủ yếu là Công an cấp xã/phường nơi công dân đăng ký cư trú.",
+    "category": "term"
+  },
+  {
+    "term": "Cơ quan xác minh cư trú",
+    "definition": "Là cơ quan có nhiệm vụ kiểm tra, đối chiếu, làm rõ các thông tin liên quan đến nơi ở, tình trạng cư trú thực tế của một cá nhân khi có yêu cầu hoặc khi có dấu hiệu vi phạm. Thông thường, Công an cấp xã/phường nơi cư trú của công dân là cơ quan chịu trách nhiệm chính trong việc xác minh này.",
+    "category": "term"
+  },
+  {
+    "term": "Nghị định hướng dẫn Luật Cư trú",
+    "definition": "Là văn bản quy phạm pháp luật do Chính phủ ban hành để quy định chi tiết và hướng dẫn thi hành các điều, khoản của Luật Cư trú. Nghị định này giúp cụ thể hóa các quy định của Luật, đảm bảo việc áp dụng thống nhất và hiệu quả trong thực tiễn. Hiện tại, Nghị định số 154/2024/NĐ-CP ngày 26/11/2024 quy định chi tiết một số điều và biện pháp thi hành Luật Cư trú, có hiệu lực từ ngày 10/01/2025.",
+    "category": "term"
+  },
+  {
+    "term": "Quyền cư trú",
+    "definition": "Là quyền của công dân được sinh sống tại một địa điểm nhất định trong lãnh thổ Việt Nam. Quyền này bao gồm việc đăng ký, quản lý cư trú, cũng như các quyền và nghĩa vụ liên quan đến nơi ở của công dân.",
+    "category": "term"
+  },
+  {
+    "term": "Quyền tự do cư trú",
+    "definition": "Là quyền cơ bản của công dân được tự do lựa chọn, quyết định nơi cư trú của mình, đăng ký cư trú phù hợp với quy định của Luật Cư trú và các quy định khác của pháp luật có liên quan. Quyền này không bị hạn chế ngoại trừ những trường hợp được pháp luật quy định rõ ràng.",
+    "category": "term"
+  },
+  {
+    "term": "Quyền lựa chọn nơi cư trú",
+    "definition": "Đây là một khía cạnh của quyền tự do cư trú. Công dân có quyền tự do lựa chọn nơi mình muốn sinh sống (thường trú, tạm trú) mà không bị ép buộc, trừ các trường hợp bị hạn chế theo quy định của pháp luật.",
+    "category": "term"
+  },
+  {
+    "term": "Nghĩa vụ khai báo cư trú",
+    "definition": "Là trách nhiệm của công dân phải cung cấp đầy đủ, chính xác, kịp thời thông tin, giấy tờ, tài liệu về cư trú của mình cho cơ quan, người có thẩm quyền và chịu trách nhiệm về thông tin, giấy tờ, tài liệu đã cung cấp.1 Nghĩa vụ này bao gồm việc đăng ký thường trú, tạm trú, thông báo lưu trú, khai báo tạm vắng, điều chỉnh thông tin cư trú, v.v.",
+    "category": "term"
+  },
+  {
+    "term": "Vi phạm hành chính về cư trú",
+    "definition": "Là những hành vi của cá nhân, tổ chức không tuân thủ các quy định của pháp luật về đăng ký, quản lý cư trú. Các hành vi này có thể bao gồm:",
+    "category": "term"
+  },
+  {
+    "term": "Xử phạt vi phạm cư trú",
+    "definition": "Là việc cơ quan nhà nước có thẩm quyền áp dụng các biện pháp xử lý hành chính (chủ yếu là phạt tiền) đối với các hành vi vi phạm hành chính về cư trú. Mức phạt cụ thể được quy định tại Nghị định số 144/2021/NĐ-CP quy định xử phạt vi phạm hành chính trong lĩnh vực an ninh, trật tự, an toàn xã hội; phòng, chống tệ nạn xã hội; phòng cháy, chữa cháy, cứu nạn, cứu hộ; phòng, chống bạo lực gia đình.",
+    "category": "term"
+  },
+  {
+    "term": "Cưỡng chế cư trú",
+    "definition": "Khái niệm này thường được hiểu là việc hạn chế quyền tự do cư trú của công dân trong một số trường hợp cụ thể theo quy định của pháp luật. Các trường hợp này bao gồm:",
+    "category": "term"
+  },
+  {
+    "term": "Miễn đăng ký cư trú",
+    "definition": "Theo quy định của Luật Cư trú hiện hành, không có quy định chung về việc \"miễn đăng ký cư trú\" cho tất cả các đối tượng. Tuy nhiên, có các trường hợp được miễn lệ phí đăng ký cư trú, bao gồm:",
+    "category": "term"
+  },
+  {
+    "term": "KT1",
+    "definition": "Nơi đăng ký thường trú trong Sổ hộ khẩu",
+    "category": "term"
+  },
+  {
+    "term": "KT2",
+    "definition": "Nơi tạm trú dài hạn trong phạm vi tỉnh, thành phố trực thuộc trung ương",
+    "category": "term"
+  },
+  {
+    "term": "KT3",
+    "definition": "Tạm trú dài hạn ở tỉnh, thành phố khác nơi đăng ký thường trú",
+    "category": "term"
+  },
+  {
+    "term": "KT4",
+    "definition": "Tạm trú ngắn hạn ở tỉnh, thành phố khác nơi đăng ký thường trú Tương tự giống như trường hợp KT3, tuy nhiên ở KT4, thời gian đăng ký tạm trú của công dân ở tỉnh, thành phố khác ngắn hạn (thường có một thời hạn nhất định).",
+    "category": "term"
+  },
+  {
+    "term": "Tạm vắng",
+    "definition": "là việc công dân vắng mặt tại nơi cư trú trong một khoảng thời gian nhất định",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú độc lập",
+    "definition": "là một người có quyền tự quyết về nơi ở của mình, không bị phụ thuộc vào người khác (ví dụ: vợ/chồng, cha mẹ).",
+    "category": "term"
+  },
+  {
+    "term": "Cư trú theo hộ gia đình",
+    "definition": "là hình thức đăng ký cư trú, trong đó một nhóm người có quan hệ gia đình (như vợ chồng, con cái, anh chị em ruột, ông bà, cháu) cùng sinh sống tại một chỗ ở hợp pháp và được đăng ký thường trú hoặc tạm trú chung một chỗ ở.",
+    "category": "term"
+  },
+  {
+    "term": "Hạn chế quyền tự do cư trú",
+    "definition": "là các trường hợp được pháp luật quy định cụ thể, trong đó quyền tự do lựa chọn nơi cư trú của công dân có thể bị giới hạn.",
+    "category": "term"
+  },
+  {
+    "term": "Các hành vi bị nghiêm cấm về cư trú",
+    "definition": "là những hành vi bị pháp luật nghiêm cấm một cách rõ ràng trong quá trình đăng ký và quản lý cư trú.",
+    "category": "term"
+  }
+]

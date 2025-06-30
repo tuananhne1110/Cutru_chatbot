@@ -1,0 +1,174 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+docker/
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile.backend
+Dockerfile.frontend
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Data files
+*.pkl
+*.pickle
+*.json
+!chunking/output_json/*.json
+!package.json
+!package-lock.json
+
+# Documents
+*.docx
+*.doc
+*.pdf
+*.xlsx
+*.xls
+
+# Node.js (Frontend)
+frontend/node_modules/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.npm
+frontend/.eslintcache
+frontend/coverage/
+frontend/.nyc_output
+frontend/build/
+frontend/dist/
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# API Keys and Secrets
+.env
+*.key
+*.pem
+*.crt
+
+# Cache
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Pyre type checker
+.pyre/
+
+# Qdrant data
+qdrant_data/
+qdrant_storage/
+
+# Supabase
+.supabase/
+
+# Model files
+*.bin
+*.model
+*.h5
+*.pth
+*.pt
+*.onnx
+
+# Vector embeddings
+embeddings/
+*.npy
+*.npz
+
+# Large data files
+data/raw/
+data/processed/
+*.csv
+*.tsv
+*.parquet
+
+# Backup files
+backup/
+*.backup
+*.bak
