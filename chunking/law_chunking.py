@@ -51,10 +51,6 @@ def iter_block_items(parent):
 
 def extract_law_meta(raw_text: str):
     lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
-    # print("\n--- LOG: 40 dòng đầu để debug số hiệu ---")
-    # for idx, line in enumerate(lines[:40]):
-    #     print(f"{idx:02d}: [{line}]")
-    # print("--- END LOG ---\n")
 
     # Số hiệu - tìm trong tối đa 20 dòng đầu và cả trong bảng
     law_code = None
@@ -79,18 +75,22 @@ def extract_law_meta(raw_text: str):
     if not law_code:
         law_code = "Không xác định"
 
-    # law_name
+    # law_name: tìm dòng đầu tiên bắt đầu bằng 'LUẬT', 'NGHỊ ĐỊNH', ... nhưng KHÔNG chứa 'số'
     law_name = None
-    for i, line in enumerate(lines[:20]):
+    for i, line in enumerate(lines[:40]):
         if re.match(r"^(LUẬT|NGHỊ ĐỊNH|THÔNG TƯ|QUYẾT ĐỊNH)$", line, re.IGNORECASE):
             if i + 1 < len(lines):
                 next_line = lines[i+1].strip()
                 law_name = f"{line.title()} {next_line}"
                 break
+        # Nếu là 'LUẬT ...' hoặc 'NGHỊ ĐỊNH ...' nhưng KHÔNG chứa 'số' hoặc 'Số'
         m = re.match(r"^(LUẬT|NGHỊ ĐỊNH|THÔNG TƯ|QUYẾT ĐỊNH)\s+(.+)$", line, re.IGNORECASE)
-        if m:
+        if m and not re.search(r"\bsố\b", line, re.IGNORECASE):
             law_name = line.title()
             break
+    # Nếu vẫn chưa có, trả về 'Không xác định'
+    if not law_name:
+        law_name = "Không xác định"
 
     # promulgation_date
     promulgation_date = None
@@ -105,7 +105,7 @@ def extract_law_meta(raw_text: str):
 
     # law_type
     law_type = None
-    if law_name:
+    if law_name and law_name != "Không xác định":
         prefix = law_name.split()[0].upper()
         if prefix == "LUẬT":
             law_type = "Luật"
@@ -117,7 +117,7 @@ def extract_law_meta(raw_text: str):
             law_type = "Thông tư"
 
     return {
-        "law_name": law_name or "Không xác định",
+        "law_name": law_name,
         "law_code": law_code or "Không xác định",
         "promulgation_date": promulgation_date,
         "effective_date": None,
@@ -128,7 +128,8 @@ def extract_law_meta(raw_text: str):
 
 # ---- PARSER PHẦN THÂN ----
 def parse_law_text(raw, meta):
-    chapter_pat = re.compile(r"(Chương [IVXLCDM]+\.*[^\n]*)", re.IGNORECASE)
+    # Pattern để lấy cả tiêu đề chương và tên chương
+    chapter_pat = re.compile(r"(Chương [IVXLCDM]+\.*[^\n]*\n[^\n]*)", re.IGNORECASE)
     # Chỉ lấy khi có format chính xác "Điều {số}. {nội dung}"
     article_pat = re.compile(r"Điều\s+(\d+)\s*\.\s+([^\n]+)", re.IGNORECASE)
     clause_pat = re.compile(r"(^\d+\.)", re.MULTILINE)
@@ -143,10 +144,22 @@ def parse_law_text(raw, meta):
 
     records = []
     for i in range(len(chapters)-1):
-        chap_start, chap_title = chapters[i]
+        chap_start, chap_full_title = chapters[i]
         chap_end = chapters[i+1][0]
         chap_text = raw[chap_start:chap_end]
-        chapter_id = f"{meta['law_code']}_{chap_title.replace(' ','_').replace('.','')}"
+        
+        # Tách tiêu đề chương và tên chương
+        chap_lines = chap_full_title.strip().split('\n')
+        if len(chap_lines) >= 2:
+            chapter_title = chap_lines[0].strip()  # "Chương I"
+            chapter_name = chap_lines[1].strip()   # "Tên chương"
+            chapter_content = chapter_name  # Chỉ lấy tên chương, bỏ "Chương I"
+        else:
+            chapter_title = chap_full_title.strip()
+            chapter_name = ""
+            chapter_content = chapter_title
+            
+        chapter_id = f"{meta['law_code']}_{chapter_title.replace(' ','_').replace('.','')}"
         
         # Tìm articles với format chính xác "Điều {số}. {nội dung}"
         articles = []
@@ -157,23 +170,25 @@ def parse_law_text(raw, meta):
             # Lưu cả vị trí bắt đầu và nội dung đầy đủ
             articles.append((match.start(), article_title, match.group(0)))
         
+        # Luôn tạo record cho chương trước
+        chapter_record = {
+            **meta,
+            "chapter": chapter_title,
+            "section": None,
+            "article": None,
+            "clause": None,
+            "point": None,
+            "type": "chương",
+            "id": chapter_id,
+            "parent_id": None,
+            "parent_type": None,
+            "content": chapter_content,
+            "law_ref": f"{meta['law_name']}, {chapter_title}",
+            "category": "law"
+        }
+        records.append(chapter_record)
+        
         if not articles:
-            if chap_text.strip():
-                records.append({
-                    **meta,
-                    "chapter": chap_title.strip(),
-                    "section": None,
-                    "article": None,
-                    "clause": None,
-                    "point": None,
-                    "type": "văn_bản",
-                    "id": chapter_id,
-                    "parent_id": None,
-                    "parent_type": None,
-                    "content": chap_text.strip(),
-                    "law_ref": meta['law_name'],
-                    "category": "law"
-                })
             continue
         articles.append((len(chap_text), "", ""))
         for j in range(len(articles)-1):
@@ -212,10 +227,13 @@ def parse_law_text(raw, meta):
                 # Nếu không có khoản, lấy toàn bộ nội dung
                 article_title_content = full_article_content
             
+            # Bỏ "Điều X." khỏi content
+            article_title_content = re.sub(r'^Điều\s+\d+\s*\.\s*', '', article_title_content).strip()
+            
             # Luôn tạo record cho điều trước
             article_record = {
                 **meta,
-                "chapter": chap_title.strip(),
+                "chapter": chapter_title,
                 "section": None,
                 "article": art_title,
                 "clause": None,
@@ -240,6 +258,12 @@ def parse_law_text(raw, meta):
                     clause_text = full_article_content[clause_start:clause_end].strip()
                     clause_no = re.match(r"^(\d+)\.", clause_text)
                     clause_id = f"{article_id}_K{clause_no.group(1)}" if clause_no else f"{article_id}_K?"
+                    
+                    # Bỏ "1." khỏi content của khoản
+                    if clause_no:
+                        clause_content = clause_text[clause_no.end():].strip()
+                    else:
+                        clause_content = clause_text
                     point_matches = list(point_pat.finditer(clause_text))
                     if point_matches:
                         point_spans = [m.start() for m in point_matches] + [len(clause_text)]
@@ -249,9 +273,15 @@ def parse_law_text(raw, meta):
                             point_text = clause_text[point_start:point_end].strip()
                             point_id_match = re.match(r"([a-e])\)", point_text)
                             point_id = f"{clause_id}_{point_id_match.group(1)}" if point_id_match else f"{clause_id}_?"
+                            
+                            # Bỏ "a)" khỏi content của điểm
+                            if point_id_match:
+                                point_content = point_text[point_id_match.end():].strip()
+                            else:
+                                point_content = point_text
                             records.append({
                                 **meta,
-                                "chapter": chap_title.strip(),
+                                "chapter": chapter_title,
                                 "section": None,
                                 "article": art_title,
                                 "clause": clause_no.group(1) if clause_no else None,
@@ -260,14 +290,14 @@ def parse_law_text(raw, meta):
                                 "id": point_id,
                                 "parent_id": clause_id,
                                 "parent_type": "khoản",
-                                "content": point_text,
+                                "content": point_content,
                                 "law_ref": f"{meta['law_name']}, {art_title}, Khoản {clause_no.group(1) if clause_no else '?'}{', Điểm ' + point_id_match.group(1) if point_id_match else ''}",
                                 "category": "law"
                             })
                     else:
                         records.append({
                             **meta,
-                            "chapter": chap_title.strip(),
+                            "chapter": chapter_title,
                             "section": None,
                             "article": art_title,
                             "clause": clause_no.group(1) if clause_no else None,
@@ -276,7 +306,7 @@ def parse_law_text(raw, meta):
                             "id": clause_id,
                             "parent_id": article_id,
                             "parent_type": "điều",
-                            "content": clause_text,
+                            "content": clause_content,
                             "law_ref": f"{meta['law_name']}, {art_title}, Khoản {clause_no.group(1) if clause_no else '?'}",
                             "category": "law"
                         })

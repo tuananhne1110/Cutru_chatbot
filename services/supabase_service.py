@@ -41,7 +41,7 @@ def create_chat_session(session_id, user_info=None):
     result = supabase.table("chat_sessions").insert(data).execute()
     return result.data[0] if result.data else None
 
-def search_laws_by_category(query=None, limit=20):
+def search_laws_by_category(query=None, limit=5):
     """
     Tìm kiếm trong bảng laws với category = 'law'
     """
@@ -54,10 +54,10 @@ def search_laws_by_category(query=None, limit=20):
         result = query_builder.limit(limit).execute()
         return result.data
     except Exception as e:
-        print(f"❌ Lỗi khi search laws: {e}")
+        print(f"Lỗi khi search laws: {e}")
         return []
 
-def search_form_guidance_by_category(query=None, limit=20):
+def search_form_guidance_by_category(query=None, limit=5):
     """
     Tìm kiếm trong bảng form_guidance với category = 'form'
     """
@@ -70,10 +70,10 @@ def search_form_guidance_by_category(query=None, limit=20):
         result = query_builder.limit(limit).execute()
         return result.data
     except Exception as e:
-        print(f"❌ Lỗi khi search form guidance: {e}")
+        print(f"Lỗi khi search form guidance: {e}")
         return []
 
-def get_law_chunks(law_code=None, law_name=None, limit=20):
+def get_law_chunks(law_code=None, law_name=None, limit=5):
     """
     Lấy law records với filter tùy chọn
     """
@@ -88,10 +88,10 @@ def get_law_chunks(law_code=None, law_name=None, limit=20):
         result = query.limit(limit).execute()
         return result.data
     except Exception as e:
-        print(f"❌ Lỗi khi get law records: {e}")
+        print(f"Lỗi khi get law records: {e}")
         return []
 
-def get_form_chunks(form_code=None, form_name=None, chunk_type=None, limit=20):
+def get_form_chunks(form_code=None, form_name=None, chunk_type=None, limit=5):
     """
     Lấy form guidance records với filter tùy chọn
     """
@@ -108,7 +108,7 @@ def get_form_chunks(form_code=None, form_name=None, chunk_type=None, limit=20):
         result = query.limit(limit).execute()
         return result.data
     except Exception as e:
-        print(f"❌ Lỗi khi get form guidance records: {e}")
+        print(f"Lỗi khi get form guidance records: {e}")
         return []
 
 def get_database_stats():
@@ -130,5 +130,5 @@ def get_database_stats():
             "total": laws_count + forms_count
         }
     except Exception as e:
-        print(f"❌ Lỗi khi get database stats: {e}")
+        print(f"Lỗi khi get database stats: {e}")
         return {"laws": 0, "forms": 0, "total": 0}

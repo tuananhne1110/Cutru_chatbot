@@ -7,7 +7,7 @@ CHUTES_API_KEY = os.getenv("CHUTES_API_KEY")
 CHUTES_API_URL = "https://llm.chutes.ai/v1/chat/completions"
 
 
-def call_llm_stream(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=1000, temperature=0.3):
+def call_llm_stream(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=2000, temperature=0.3):
     headers = {
         "Authorization": f"Bearer {CHUTES_API_KEY}",
         "Content-Type": "application/json"
@@ -34,12 +34,12 @@ def call_llm_stream(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=100
                     if "choices" in data and data["choices"]:
                         chunk = data["choices"][0].get("delta", {}).get("content", None)
                         if chunk is not None and chunk != "":
-                            yield f"data: {{\"choices\":[{{\"delta\":{{\"content\":{json.dumps(chunk, ensure_ascii=False)}}}}}]}}\n"
+                            yield chunk
                 except Exception as e:
                     print("[call_llm_stream] Exception parsing line:", line, e)
                     continue
 
-def call_llm_full(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=1000, temperature=0.3):
+def call_llm_full(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=2000, temperature=0.3):
     headers = {
         "Authorization": f"Bearer {CHUTES_API_KEY}",
         "Content-Type": "application/json"

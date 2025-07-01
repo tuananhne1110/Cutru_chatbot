@@ -85,7 +85,14 @@ class QueryRewriter:
         return False
 
     def paraphrase_llm(self, text: str) -> str:
-        prompt = f"Viết lại câu hỏi sau thành dạng ngắn gọn, rõ ràng để tra cứu pháp luật. Chỉ giữ lại ý chính. '{text}'"
+        # Step-back prompt: yêu cầu LLM không chỉ viết lại mà còn xác định mục tiêu thực sự của truy vấn
+        prompt = (
+            """Bạn là chuyên gia pháp luật.
+            Bước 1: Hãy tóm tắt mục đích và ý định nghiệp vụ chính của người hỏi trong câu sau.
+            Bước 2: Viết lại câu hỏi thành truy vấn pháp lý ngắn gọn, rõ ràng, chỉ giữ lại phần nghiệp vụ chính, loại bỏ các từ thừa, cảm thán, câu chào hỏi.
+            Chỉ in ra kết quả của Bước 2.\n"""
+            f"Câu hỏi gốc: '{text}'"
+        )
         rewritten = call_llm_full(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=128, temperature=0.2)
         return rewritten.strip()
 

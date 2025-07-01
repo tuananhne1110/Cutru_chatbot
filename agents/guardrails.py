@@ -248,59 +248,28 @@ Nếu phù hợp, trả về: "SAFE"
             print(f"[Guardrails] Policy check failed: {e}")
             return "SAFE"
 
-    def validate_input(self, text: str) -> Dict:
-        """Kiểm tra input từ user"""
-        start_time = time.time()
-        
-        result = {
-            "is_safe": True,
-            "safety_level": SafetyLevel.SAFE,
-            "block_reason": None,
-            "warnings": [],
-            "processing_time": 0,
-            "layers_passed": []
-        }
-        
-        # Lớp 1: Rule-based check
-        layer1_level, violations, layer1_details = self.layer1_rule_based_check(text)
-        result["layers_passed"].append("layer1_rule_based")
-        
-        if layer1_level == SafetyLevel.BLOCKED:
-            result["is_safe"] = False
-            result["safety_level"] = SafetyLevel.BLOCKED
-            result["block_reason"] = f"Vi phạm quy tắc: {violations}"
-            result["processing_time"] = time.time() - start_time
-            return result
-        elif layer1_level == SafetyLevel.WARNING:
-            result["warnings"].append(f"Cảnh báo rule-based: {violations}")
-        
-        # Lớp 2: OpenAI Moderation (chỉ gọi nếu vượt qua lớp 1)
-        if layer1_level == SafetyLevel.SAFE:
-            layer2_level, layer2_details = self.layer2_openai_moderation(text)
-            result["layers_passed"].append("layer2_openai_moderation")
-            
-            if layer2_level == SafetyLevel.BLOCKED:
-                result["is_safe"] = False
-                result["safety_level"] = SafetyLevel.BLOCKED
-                result["block_reason"] = f"OpenAI Moderation: {layer2_details.get('categories', [])}"
-            elif layer2_level == SafetyLevel.WARNING:
-                result["warnings"].append(f"OpenAI cảnh báo: {layer2_details.get('categories', [])}")
-        
-        # Lớp 3: Policy guardrails
-        policy_result = self.layer3_policy_guardrails(text, is_output=False)
-        result["layers_passed"].append("layer3_policy")
-        
-        if "VIOLATION:" in policy_result:
-            result["is_safe"] = False
-            result["safety_level"] = SafetyLevel.BLOCKED
-            result["block_reason"] = f"Vi phạm chính sách: {policy_result}"
-        
-        result["processing_time"] = time.time() - start_time
-        
-        # Log kết quả
-        self.log_validation_result("INPUT", text, result)
-        
-        return result
+    def extract_law_from_history(self, messages):
+        # Đơn giản: tìm luật gần nhất trong messages
+        for msg in reversed(messages):
+            if msg.get('role') == 'user' and 'luật' in msg.get('content', '').lower():
+                return msg['content']
+        return None
+
+    def validate_input(self, question, messages=None):
+        # Nếu có messages, kiểm tra context
+        if messages:
+            last_law = self.extract_law_from_history(messages)
+            if last_law and self.is_ambiguous(question):
+                # Nếu context đã rõ, không cần clarification
+                return {"is_safe": True, "need_clarification": False}
+        # Nếu không có context, kiểm tra mơ hồ như cũ
+        if self.is_ambiguous(question):
+            return {
+                "is_safe": True,
+                "need_clarification": True,
+                "clarification_message": "Bạn vui lòng nói rõ văn bản pháp luật hoặc tên luật (ví dụ: Điều 11 Luật Cư trú 2020, hoặc Điều 11 của Nghị định số ...) để tôi có thể trả lời chính xác."
+            }
+        return {"is_safe": True, "need_clarification": False}
 
     def validate_output(self, text: str) -> Dict:
         """Kiểm tra output từ LLM"""
@@ -312,7 +281,9 @@ Nếu phù hợp, trả về: "SAFE"
             "block_reason": None,
             "warnings": [],
             "processing_time": 0,
-            "layers_passed": []
+            "layers_passed": [],
+            "need_clarification": False,
+            "clarification_message": None
         }
         
         # Lớp 1: Rule-based check
@@ -353,6 +324,11 @@ Nếu phù hợp, trả về: "SAFE"
         # Log kết quả
         self.log_validation_result("OUTPUT", text, result)
         
+        # Kiểm tra mơ hồ
+        if self.is_ambiguous(text):
+            result["need_clarification"] = True
+            result["clarification_message"] = "Bạn vui lòng nói rõ văn bản pháp luật hoặc tên luật (ví dụ: Điều 11 Luật Cư trú 2020, hoặc Điều 11 của Nghị định số ...) để tôi có thể trả lời chính xác."
+        
         return result
 
     def log_validation_result(self, validation_type: str, text: str, result: Dict):
@@ -366,7 +342,9 @@ Nếu phù hợp, trả về: "SAFE"
             "block_reason": result["block_reason"],
             "warnings": result["warnings"],
             "processing_time": result["processing_time"],
-            "layers_passed": result["layers_passed"]
+            "layers_passed": result["layers_passed"],
+            "need_clarification": result["need_clarification"],
+            "clarification_message": result["clarification_message"]
         }
         
         print(f"[Guardrails {validation_type}] {json.dumps(log_entry, ensure_ascii=False)}")
@@ -376,4 +354,14 @@ Nếu phù hợp, trả về: "SAFE"
 
     def get_fallback_message(self, block_reason: str) -> str:
         """Trả về message chuẩn khi bị block"""
-        return "Xin lỗi, tôi không thể hỗ trợ câu hỏi này. Vui lòng hỏi về lĩnh vực pháp luật Việt Nam." 
+        return "Xin lỗi, tôi không thể hỗ trợ câu hỏi này. Vui lòng hỏi về lĩnh vực pháp luật Việt Nam."
+
+    def is_ambiguous(self, text: str) -> bool:
+        # Implementation of is_ambiguous method
+        # This is a placeholder and should be implemented based on your specific requirements
+        return False
+
+    def is_safe(self, text: str) -> bool:
+        # Implementation of is_safe method
+        # This is a placeholder and should be implemented based on your specific requirements
+        return True 

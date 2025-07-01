@@ -6,7 +6,12 @@ import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
-  const [sessionId, setSessionId] = useState(null);
+  const [sessionId, setSessionId] = useState(() => {
+    // Kiểm tra localStorage trước
+    const savedSessionId = localStorage.getItem('chatSessionId');
+    return savedSessionId || null;
+  });
+  
   const {
     messages,
     setMessages,
@@ -15,26 +20,44 @@ function App() {
     isLoading,
     sendMessage,
     showSources,
-    toggleSources
+    toggleSources,
+    loadChatHistory,
+    clearChatHistory
   } = useChatStream(sessionId);
 
   useEffect(() => {
-    // Tạo session mới khi component mount
+    // Tạo session mới khi component mount nếu chưa có
     const createNewSession = async () => {
+      if (!sessionId) {
       try {
         const response = await axios.post(`${API_BASE_URL}/chat/session`);
-        setSessionId(response.data.session_id);
+          const newSessionId = response.data.session_id;
+          setSessionId(newSessionId);
+          localStorage.setItem('chatSessionId', newSessionId);
       } catch (error) {
         console.error('Error creating session:', error);
+        }
       }
     };
     createNewSession();
-  }, []);
+  }, [sessionId]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+
+  const createNewSession = async () => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/chat/session`);
+      const newSessionId = response.data.session_id;
+      setSessionId(newSessionId);
+      localStorage.setItem('chatSessionId', newSessionId);
+      setMessages([]); // Clear messages for new session
+    } catch (error) {
+      console.error('Error creating new session:', error);
     }
   };
 
@@ -63,6 +86,9 @@ function App() {
         inputMessage={inputMessage}
         setInputMessage={setInputMessage}
         handleKeyPress={handleKeyPress}
+        loadChatHistory={loadChatHistory}
+        clearChatHistory={clearChatHistory}
+        createNewSession={createNewSession}
       />
     </div>
   );

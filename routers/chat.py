@@ -3,11 +3,13 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime
 import uuid
 import time
+import json
 from models.schemas import ChatRequest, ChatResponse, ChatHistoryResponse, Source
 from services.embedding import get_embedding
 from services.qdrant_service import search_qdrant
 from services.llm_service import call_llm_stream, call_llm_full
 from services.supabase_service import save_chat_message, get_chat_history, create_chat_session
+from config import supabase
 from agents.query_rewriter import QueryRewriter
 from agents.guardrails import Guardrails
 from agents.intent_detector import intent_detector
@@ -55,6 +57,16 @@ def search_multiple_collections(query_embedding, intent, confidence):
     all_results.sort(key=lambda x: x.score, reverse=True)
     return all_results[:20]  # Giới hạn 20 kết quả
 
+def build_conversational_prompt(messages):
+    prompt = ""
+    for msg in messages or []:
+        if msg.get('role') == 'user':
+            prompt += f"User: {msg['content']}\n"
+        elif msg.get('role') == 'assistant':
+            prompt += f"Assistant: {msg['content']}\n"
+    prompt += "Assistant:"
+    return prompt
+
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
@@ -65,18 +77,32 @@ async def chat(request: ChatRequest):
         
         # Guardrails check - Input validation
         t0 = time.time()
-        input_safety = guardrails.validate_input(request.question)
+        input_safety = guardrails.validate_input(request.question, getattr(request, 'messages', None))
         t1 = time.time()
         print(f"[Timing] Guardrails Input: {t1-t0:.4f}s")
         
         if not input_safety["is_safe"]:
-            fallback_msg = guardrails.get_fallback_message(input_safety["block_reason"])
+            block_reason = input_safety.get("block_reason")
+            # Ensure block_reason is always a string and never a bool
+            if isinstance(block_reason, bool) or block_reason is None:
+                block_reason_str = ""
+            else:
+                block_reason_str = str(block_reason)
+            fallback_msg = guardrails.get_fallback_message(block_reason_str)
+            safety_level = input_safety.get("safety_level")
+            # Only use .value if it's an Enum, else fallback to string
+            if hasattr(safety_level, 'value') and not isinstance(safety_level, bool):
+                safety_level_value = str(getattr(safety_level, 'value', ''))
+            elif isinstance(safety_level, str):
+                safety_level_value = safety_level
+            else:
+                safety_level_value = ""
             raise HTTPException(
                 status_code=400, 
                 detail={
                     "error": "Query không an toàn",
-                    "reason": input_safety["block_reason"],
-                    "safety_level": input_safety["safety_level"].value,
+                    "reason": block_reason_str,
+                    "safety_level": safety_level_value,
                     "fallback_message": fallback_msg
                 }
             )
@@ -200,22 +226,46 @@ async def chat_stream(request: ChatRequest):
     
     # Guardrails check - Input validation
     t0 = time.time()
-    input_safety = guardrails.validate_input(request.question)
+    input_safety = guardrails.validate_input(request.question, getattr(request, 'messages', None))
     t1 = time.time()
     print(f"[Timing] Guardrails Input: {t1-t0:.4f}s")
-    
+
+    # Nếu cần làm rõ, trả về gợi ý mềm
+    if input_safety.get("need_clarification"):
+        clarification = input_safety.get("clarification_message") or "Bạn vui lòng nói rõ hơn để tôi có thể trả lời chính xác."
+        return StreamingResponse((str(clarification) for clarification in [clarification]), media_type="text/plain")
+
     if not input_safety["is_safe"]:
-        fallback_msg = guardrails.get_fallback_message(input_safety["block_reason"])
+        block_reason = input_safety.get("block_reason")
+        # Ensure block_reason is always a string and never a bool
+        if isinstance(block_reason, bool) or block_reason is None:
+            block_reason_str = ""
+        else:
+            block_reason_str = str(block_reason)
+        fallback_msg = guardrails.get_fallback_message(block_reason_str)
+        safety_level = input_safety.get("safety_level")
+        # Only use .value if it's an Enum, else fallback to string
+        if hasattr(safety_level, 'value') and not isinstance(safety_level, bool):
+            safety_level_value = str(getattr(safety_level, 'value', ''))
+        elif isinstance(safety_level, str):
+            safety_level_value = safety_level
+        else:
+            safety_level_value = ""
         raise HTTPException(
             status_code=400, 
             detail={
                 "error": "Query không an toàn",
-                "reason": input_safety["block_reason"],
-                "safety_level": input_safety["safety_level"].value,
+                "reason": block_reason_str,
+                "safety_level": safety_level_value,
                 "fallback_message": fallback_msg
             }
         )
     
+    # --- Build conversational prompt từ toàn bộ messages ---
+    if getattr(request, 'messages', None):
+        conversational_prompt = build_conversational_prompt(request.messages)
+    else:
+        conversational_prompt = request.question
     # Intent detection
     t0 = time.time()
     intent, intent_metadata = intent_detector.detect_intent(request.question)
@@ -225,13 +275,13 @@ async def chat_stream(request: ChatRequest):
     
     # Query rewriting trước khi embedding
     t0 = time.time()
-    rewritten_question = query_rewriter.rewrite(request.question)
+    rewritten_prompt = query_rewriter.rewrite(conversational_prompt)
     t1 = time.time()
     print(f"[Timing] Query rewrite: {t1-t0:.4f}s")
     
     # Embedding
     t0 = time.time()
-    query_embedding = get_embedding(rewritten_question)
+    query_embedding = get_embedding(rewritten_prompt)
     t1 = time.time()
     print(f"[Timing] Embedding: {t1-t0:.4f}s")
     
@@ -247,6 +297,7 @@ async def chat_stream(request: ChatRequest):
     
     # Chuẩn bị chunks cho prompt manager
     chunks = []
+    sources_data = []
     
     for result in results:
         chunk_data = result.payload.copy()
@@ -257,19 +308,59 @@ async def chat_stream(request: ChatRequest):
             continue
             
         chunks.append(chunk_data)
+        
+        # Chuẩn bị sources data
+        source_data = {k: v for k, v in chunk_data.items() if k not in ['text', 'content']}
+        sources_data.append(source_data)
     
     # Tạo prompt động dựa trên intent và chunks
     t0 = time.time()
     prompt = prompt_manager.create_dynamic_prompt(
-        question=rewritten_question,
+        question=rewritten_prompt,
         chunks=chunks,
         intent=intent
     )
     t1 = time.time()
     print(f"[Timing] Dynamic prompt creation: {t1-t0:.4f}s")
     
+    # Chuẩn bị sources
+    sources = []
+    for src in sources_data:
+        # Đảm bảo các trường bắt buộc có giá trị mặc định
+        safe_src = {
+            "law_name": src.get("law_name", src.get("form_name", "Nguồn")),
+            "article": src.get("article"),
+            "chapter": src.get("chapter"),
+            "clause": src.get("clause"),
+            "point": src.get("point")
+        }
+        sources.append(Source(**safe_src))
+    
+    # Tạo generator function để vừa stream vừa lưu lịch sử
+    def stream_with_history():
+        full_answer = ""
+        try:
+            for chunk in call_llm_stream(prompt):
+                if chunk:
+                    full_answer += chunk
+                yield chunk
+        except Exception as e:
+            print(f"Error in stream: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            # Lưu lịch sử sau khi stream hoàn thành
+            try:
+                save_chat_message(
+                    session_id=session_id,
+                    question=request.question,
+                    answer=full_answer,
+                    sources=[src.dict() for src in sources]
+                )
+            except Exception as e:
+                print(f"Không thể lưu chat history: {e}")
+    
     # Gọi LLM stream (không đo thời gian vì là stream)
-    resp = StreamingResponse(call_llm_stream(prompt), media_type="text/plain")
+    resp = StreamingResponse(stream_with_history(), media_type="text/plain")
     total_end = time.time()
     print(f"[Timing] Tổng thời gian xử lý (trước khi stream): {total_end-total_start:.4f}s")
     return resp
@@ -291,5 +382,14 @@ async def create_session():
         session_id = str(uuid.uuid4())
         result = create_chat_session(session_id)
         return {"session_id": session_id, "created": result is not None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/history/{session_id}")
+async def delete_history(session_id: str):
+    try:
+        # Xóa tất cả messages của session
+        result = supabase.table("chat_messages").delete().eq("session_id", session_id).execute()
+        return {"deleted": True, "session_id": session_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
