@@ -58,7 +58,25 @@ graph TD;
 
 ### 3. Sơ Đồ Luồng Dữ Liệu (Data Flow)
 
-![Data Flow](assets/Data Flow.png)
+sequenceDiagram
+    participant U as User (Frontend)
+    participant B as Backend (FastAPI)
+    participant Q as Qdrant (Vector DB)
+    participant S as Supabase (PostgreSQL)
+    participant L as LLM (DeepSeek)
+    U->>B: POST /chat/ (question)
+    B->>B: Guardrails Input Check
+    B->>B: Intent Detection
+    B->>B: Query Rewriter
+    B->>B: Embedding (PhoBERT)
+    B->>Q: Semantic Search (intent-based)
+    Q-->>B: Top-k Chunks
+    B->>B: Prompt Manager (context)
+    B->>L: Gọi LLM sinh câu trả lời
+    L-->>B: Answer
+    B->>B: Guardrails Output Check
+    B->>S: Lưu lịch sử chat, log
+    B-->>U: Trả kết quả (answer, sources, intent, ...)
 
 ### 4. Tổng Kết
 - Workflow đảm bảo bảo mật, kiểm soát chất lượng, tối ưu tốc độ.

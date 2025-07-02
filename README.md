@@ -250,7 +250,7 @@ AMBIGUOUS → all collections with weights
    ├── Weighted search
    └── Initial ranking (25 candidates)
    ↓
-7. BGE Reranking ⭐ NEW
+7. BGE Reranking 
    ├── Cross-encoder scoring
    ├── Relevance reordering
    └── Top 15 selection
@@ -282,7 +282,7 @@ AMBIGUOUS → all collections with weights
 | Query Rewrite | 0.001-0.5s | Rule-based nhanh, LLM chậm |
 | Embedding | 0.8s | Vietnamese PhoBERT |
 | Multi-collection Search | 0.03s | 4 collections, 25 candidates |
-| BGE Reranking | 0.5-2.0s | Cross-encoder inference ⭐ NEW |
+| BGE Reranking | 0.5-2.0s | Cross-encoder inference |
 | Dynamic Prompt | 0.002s | Template selection |
 | LLM Generation | 1.2s | DeepSeek V3 |
 | Guardrails Output | 0.1-2.0s | LlamaGuard Output Policy |
