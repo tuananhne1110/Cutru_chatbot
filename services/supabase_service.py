@@ -1,4 +1,7 @@
-from config import supabase
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app_config import supabase
 import json
 from datetime import datetime
 
@@ -111,24 +114,3 @@ def get_form_chunks(form_code=None, form_name=None, chunk_type=None, limit=5):
         print(f"Lỗi khi get form guidance records: {e}")
         return []
 
-def get_database_stats():
-    """
-    Lấy thống kê từ database
-    """
-    try:
-        # Thống kê laws
-        laws_result = supabase.table("laws").select("id", count="exact").eq("category", "law").execute()
-        laws_count = laws_result.count if laws_result.count is not None else 0
-        
-        # Thống kê form_guidance
-        forms_result = supabase.table("form_guidance").select("id", count="exact").eq("category", "form").execute()
-        forms_count = forms_result.count if forms_result.count is not None else 0
-        
-        return {
-            "laws": laws_count,
-            "forms": forms_count,
-            "total": laws_count + forms_count
-        }
-    except Exception as e:
-        print(f"Lỗi khi get database stats: {e}")
-        return {"laws": 0, "forms": 0, "total": 0}

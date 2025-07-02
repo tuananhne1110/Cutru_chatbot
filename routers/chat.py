@@ -9,7 +9,11 @@ from services.embedding import get_embedding
 from services.qdrant_service import search_qdrant
 from services.llm_service import call_llm_stream, call_llm_full
 from services.supabase_service import save_chat_message, get_chat_history, create_chat_session
-from config import supabase
+from services.reranker_service import get_reranker
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app_config import supabase
 from agents.query_rewriter import QueryRewriter
 from agents.guardrails import Guardrails
 from agents.intent_detector import intent_detector
@@ -28,17 +32,18 @@ COLLECTIONS = {
 query_rewriter = QueryRewriter()
 guardrails = Guardrails()
 
-def search_multiple_collections(query_embedding, intent, confidence):
+def search_multiple_collections(query_embedding, intent, confidence, original_query=""):
     """
-    Search trong nhiều collections dựa trên intent
+    Search trong nhiều collections dựa trên intent với BGE reranking
     
     Args:
         query_embedding: Vector embedding của câu hỏi
         intent: Intent đã detect
         confidence: Độ tin cậy của detection
+        original_query: Câu hỏi gốc để sử dụng cho reranking
         
     Returns:
-        List: Kết quả search từ các collections
+        List: Kết quả search từ các collections đã được rerank
     """
     collections = intent_detector.get_search_collections(intent, confidence)
     weights = intent_detector.get_search_weights(intent, confidence)
@@ -47,15 +52,55 @@ def search_multiple_collections(query_embedding, intent, confidence):
     
     for collection in collections:
         if collection in COLLECTIONS.values():
-            results = search_qdrant(collection, query_embedding, limit=10)
+            results = search_qdrant(collection, query_embedding, limit=15)  # Tăng limit để có nhiều candidates cho reranking
             # Áp dụng trọng số cho collection này
             for result in results:
                 result.score = result.score * weights.get(collection, 1.0)
             all_results.extend(results)
     
-    # Sắp xếp theo score và lấy top results
+    # Sắp xếp theo score và lấy top results ban đầu
     all_results.sort(key=lambda x: x.score, reverse=True)
-    return all_results[:20]  # Giới hạn 20 kết quả
+    initial_results = all_results[:25]  # Lấy nhiều hơn để rerank
+    
+    # Áp dụng BGE reranking nếu có query gốc
+    if original_query and initial_results:
+        try:
+            # Chuẩn bị documents cho reranking
+            documents = []
+            for result in initial_results:
+                doc = result.payload.copy()
+                if 'text' in doc:
+                    doc['content'] = doc['text']
+                documents.append(doc)
+            
+            # Rerank với BGE
+            reranker = get_reranker()
+            reranked_docs = reranker.rerank(
+                query=original_query,
+                documents=documents,
+                top_k=15,  # Giảm xuống sau reranking
+                batch_size=16
+            )
+            
+            # Chuyển đổi lại thành format kết quả
+            reranked_results = []
+            for doc in reranked_docs:
+                # Tìm result gốc tương ứng
+                for result in initial_results:
+                    if result.payload.get('text') == doc.get('content') or result.payload.get('content') == doc.get('content'):
+                        # Cập nhật score với rerank score
+                        result.score = doc.get('rerank_score', result.score)
+                        reranked_results.append(result)
+                        break
+            
+            print(f"[Reranking] Applied BGE reranking to {len(reranked_docs)} documents")
+            return reranked_results
+            
+        except Exception as e:
+            print(f"[Reranking] Error during reranking: {e}, using original results")
+            return initial_results[:15]
+    
+    return initial_results[:15]  # Giới hạn 15 kết quả
 
 def build_conversational_prompt(messages):
     prompt = ""
@@ -126,11 +171,16 @@ async def chat(request: ChatRequest):
         t1 = time.time()
         print(f"[Timing] Embedding: {t1-t0:.4f}s")
         
-        # Multi-collection search
+        # Multi-collection search với BGE reranking
         t0 = time.time()
-        results = search_multiple_collections(query_embedding, intent, intent_metadata.get('confidence', 'low'))
+        results = search_multiple_collections(
+            query_embedding, 
+            intent, 
+            intent_metadata.get('confidence', 'low'),
+            original_query=rewritten_question
+        )
         t1 = time.time()
-        print(f"[Timing] Multi-collection search: {t1-t0:.4f}s")
+        print(f"[Timing] Multi-collection search with reranking: {t1-t0:.4f}s")
         
         # Debug: In ra cấu trúc dữ liệu từ Qdrant
         if results:
@@ -285,11 +335,16 @@ async def chat_stream(request: ChatRequest):
     t1 = time.time()
     print(f"[Timing] Embedding: {t1-t0:.4f}s")
     
-    # Multi-collection search
+    # Multi-collection search với BGE reranking
     t0 = time.time()
-    results = search_multiple_collections(query_embedding, intent, intent_metadata.get('confidence', 'low'))
+    results = search_multiple_collections(
+        query_embedding, 
+        intent, 
+        intent_metadata.get('confidence', 'low'),
+        original_query=rewritten_prompt
+    )
     t1 = time.time()
-    print(f"[Timing] Multi-collection search: {t1-t0:.4f}s")
+    print(f"[Timing] Multi-collection search with reranking: {t1-t0:.4f}s")
     
     # Debug: In ra cấu trúc dữ liệu từ Qdrant
     if results:

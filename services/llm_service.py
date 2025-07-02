@@ -1,7 +1,10 @@
 import os
 import requests
 import json
-from config import embedding_model
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app_config import embedding_model
 
 CHUTES_API_KEY = os.getenv("CHUTES_API_KEY")
 CHUTES_API_URL = "https://llm.chutes.ai/v1/chat/completions"

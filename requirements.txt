@@ -5,3 +5,9 @@ requests
 python-docx==0.8.11
 python-multipart==0.0.6 
 guardrails-ai
+sentence-transformers
+qdrant-client
+supabase
+flagembedding
+torch
+transformers
