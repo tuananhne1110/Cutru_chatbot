@@ -1,6 +1,7 @@
 import re
 from typing import Tuple
 import time
+from transformers.pipelines import pipeline
 
 # Nếu muốn dùng pyvi/vspell thì import ở đây (giả sử chưa cài)
 # from pyvi import ViTokenizer, ViUtils
@@ -46,6 +47,8 @@ MAX_STOPWORD = 10
 class QueryRewriter:
     def __init__(self):
         self.correction_count = 0  # Đếm số lần sửa lỗi chính tả (nếu có)
+        # Khởi tạo paraphrase pipeline với BARTpho
+        self.paraphrase_pipe = pipeline("text2text-generation", model="vinai/bartpho-syllable")
 
     def rule_based_clean(self, text: str) -> Tuple[str, dict]:
         info = {"removed_phrases": [], "corrections": 0}
@@ -85,16 +88,12 @@ class QueryRewriter:
         return False
 
     def paraphrase_llm(self, text: str) -> str:
-        # Step-back prompt: yêu cầu LLM không chỉ viết lại mà còn xác định mục tiêu thực sự của truy vấn
-        prompt = (
-            """Bạn là chuyên gia pháp luật.
-            Bước 1: Hãy tóm tắt mục đích và ý định nghiệp vụ chính của người hỏi trong câu sau.
-            Bước 2: Viết lại câu hỏi thành truy vấn pháp lý ngắn gọn, rõ ràng, chỉ giữ lại phần nghiệp vụ chính, loại bỏ các từ thừa, cảm thán, câu chào hỏi.
-            Chỉ in ra kết quả của Bước 2.\n"""
-            f"Câu hỏi gốc: '{text}'"
-        )
-        rewritten = call_llm_full(prompt, model="deepseek-ai/DeepSeek-V3-0324", max_tokens=128, temperature=0.2)
-        return rewritten.strip()
+        # Sử dụng BARTpho với prefix 'paraphrase: '
+        prompt = f"paraphrase: {text}"
+        result = self.paraphrase_pipe(prompt, max_length=128, do_sample=False)
+        if isinstance(result, list) and len(result) > 0 and 'generated_text' in result[0]:
+            return str(result[0]['generated_text']).strip()
+        return text
 
     def rewrite(self, text: str) -> str:
         print(f"[QueryRewriter] Câu hỏi gốc: {text}")

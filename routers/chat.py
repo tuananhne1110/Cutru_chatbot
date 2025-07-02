@@ -18,6 +18,7 @@ from agents.query_rewriter import QueryRewriter
 from agents.guardrails import Guardrails
 from agents.intent_detector import intent_detector
 from agents.prompt_manager import prompt_manager
+from services.cache_service import get_cached_result, set_cached_result, get_cached_paraphrase, set_cached_paraphrase, get_semantic_cached_result, set_semantic_cached_result
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -78,7 +79,7 @@ def search_multiple_collections(query_embedding, intent, confidence, original_qu
             reranked_docs = reranker.rerank(
                 query=original_query,
                 documents=documents,
-                top_k=15,  # Giảm xuống sau reranking
+                top_k=15,  
                 batch_size=16
             )
             
@@ -120,6 +121,23 @@ async def chat(request: ChatRequest):
         if not request.session_id:
             create_chat_session(session_id)
         
+        # (1) Semantic cache với raw query
+        t0 = time.time()
+        raw_embedding = get_embedding(request.question)
+        t1 = time.time()
+        print(f"[Timing] Raw Embedding: {t1-t0:.4f}s")
+        raw_sem_cache = get_semantic_cached_result(raw_embedding)
+        if raw_sem_cache:
+            answer = raw_sem_cache['answer']
+            sources = [Source(**src) for src in raw_sem_cache['sources']]
+            print("[Semantic Cache] Trả về từ semantic cache raw query")
+            return ChatResponse(
+                answer=answer,
+                sources=sources,
+                session_id=session_id,
+                timestamp=datetime.now().isoformat()
+            )
+        
         # Guardrails check - Input validation
         t0 = time.time()
         input_safety = guardrails.validate_input(request.question, getattr(request, 'messages', None))
@@ -152,6 +170,35 @@ async def chat(request: ChatRequest):
                 }
             )
         
+        # Query rewriting trước khi embedding
+        t0 = time.time()
+        cached_paraphrase = get_cached_paraphrase(request.question)
+        if cached_paraphrase:
+            rewritten_question = cached_paraphrase
+            print("[Paraphrase Cache] Trả về từ paraphrase cache")
+        else:
+            rewritten_question = query_rewriter.rewrite(request.question)
+            set_cached_paraphrase(request.question, rewritten_question)
+        t1 = time.time()
+        print(f"[Timing] Query rewrite: {t1-t0:.4f}s")
+        
+        # (2) Semantic cache với normalized query
+        t0 = time.time()
+        norm_embedding = get_embedding(rewritten_question)
+        t1 = time.time()
+        print(f"[Timing] Norm Embedding: {t1-t0:.4f}s")
+        norm_sem_cache = get_semantic_cached_result(norm_embedding)
+        if norm_sem_cache:
+            answer = norm_sem_cache['answer']
+            sources = [Source(**src) for src in norm_sem_cache['sources']]
+            print("[Semantic Cache] Trả về từ semantic cache normalized query")
+            return ChatResponse(
+                answer=answer,
+                sources=sources,
+                session_id=session_id,
+                timestamp=datetime.now().isoformat()
+            )
+        
         # Intent detection
         t0 = time.time()
         intent, intent_metadata = intent_detector.detect_intent(request.question)
@@ -159,22 +206,10 @@ async def chat(request: ChatRequest):
         print(f"[Timing] Intent Detection: {t1-t0:.4f}s")
         print(f"[Intent] Detected: {intent.value}, Confidence: {intent_metadata.get('confidence', 'unknown')}")
         
-        # Query rewriting trước khi embedding
-        t0 = time.time()
-        rewritten_question = query_rewriter.rewrite(request.question)
-        t1 = time.time()
-        print(f"[Timing] Query rewrite: {t1-t0:.4f}s")
-        
-        # Embedding
-        t0 = time.time()
-        query_embedding = get_embedding(rewritten_question)
-        t1 = time.time()
-        print(f"[Timing] Embedding: {t1-t0:.4f}s")
-        
         # Multi-collection search với BGE reranking
         t0 = time.time()
         results = search_multiple_collections(
-            query_embedding, 
+            norm_embedding, 
             intent, 
             intent_metadata.get('confidence', 'low'),
             original_query=rewritten_question
@@ -214,23 +249,6 @@ async def chat(request: ChatRequest):
         t1 = time.time()
         print(f"[Timing] Dynamic prompt creation: {t1-t0:.4f}s")
         
-        # Gọi LLM
-        t0 = time.time()
-        answer = call_llm_full(prompt)
-        t1 = time.time()
-        print(f"[Timing] LLM: {t1-t0:.4f}s")
-        
-        # Guardrails check - Output validation
-        t0 = time.time()
-        output_safety = guardrails.validate_output(answer)
-        t1 = time.time()
-        print(f"[Timing] Guardrails Output: {t1-t0:.4f}s")
-        
-        if not output_safety["is_safe"]:
-            fallback_msg = guardrails.get_fallback_message(output_safety["block_reason"])
-            # Thay thế answer bằng fallback message
-            answer = fallback_msg
-        
         # Chuẩn bị sources
         sources = []
         for src in sources_data:
@@ -243,6 +261,23 @@ async def chat(request: ChatRequest):
                 "point": src.get("point")
             }
             sources.append(Source(**safe_src))
+        
+        # Gọi LLM
+        t0 = time.time()
+        answer = call_llm_full(prompt)
+        t1 = time.time()
+        print(f"[Timing] LLM: {t1-t0:.4f}s")
+        # Guardrails check - Output validation
+        t0 = time.time()
+        output_safety = guardrails.validate_output(answer)
+        t1 = time.time()
+        print(f"[Timing] Guardrails Output: {t1-t0:.4f}s")
+        if not output_safety["is_safe"]:
+            fallback_msg = guardrails.get_fallback_message(output_safety["block_reason"])
+            answer = fallback_msg
+        # Lưu semantic cache cho cả raw và normalized query
+        set_semantic_cached_result(raw_embedding, request.question, answer, [src.dict() for src in sources])
+        set_semantic_cached_result(norm_embedding, rewritten_question, answer, [src.dict() for src in sources])
         
         try:
             save_chat_message(
@@ -273,6 +308,22 @@ async def chat_stream(request: ChatRequest):
     session_id = request.session_id or str(uuid.uuid4())
     if not request.session_id:
         create_chat_session(session_id)
+    
+    # (1) Semantic cache với raw query
+    t0 = time.time()
+    raw_embedding = get_embedding(request.question)
+    t1 = time.time()
+    print(f"[Timing] Raw Embedding: {t1-t0:.4f}s")
+    raw_sem_cache = get_semantic_cached_result(raw_embedding)
+    if raw_sem_cache:
+        answer = raw_sem_cache['answer']
+        def stream_cached():
+            yield answer
+        print("[Semantic Cache] Trả về từ semantic cache raw query (stream)")
+        resp = StreamingResponse(stream_cached(), media_type="text/plain")
+        total_end = time.time()
+        print(f"[Timing] Tổng thời gian xử lý (trước khi stream): {total_end-total_start:.4f}s")
+        return resp
     
     # Guardrails check - Input validation
     t0 = time.time()
@@ -316,25 +367,44 @@ async def chat_stream(request: ChatRequest):
         conversational_prompt = build_conversational_prompt(request.messages)
     else:
         conversational_prompt = request.question
+    # Query rewriting trước khi embedding
+    t0 = time.time()
+    cached_paraphrase = get_cached_paraphrase(conversational_prompt)
+    if cached_paraphrase:
+        rewritten_prompt = cached_paraphrase
+        print("[Paraphrase Cache] Trả về từ paraphrase cache (stream)")
+    else:
+        rewritten_prompt = query_rewriter.rewrite(conversational_prompt)
+        set_cached_paraphrase(conversational_prompt, rewritten_prompt)
+    t1 = time.time()
+    print(f"[Timing] Query rewrite: {t1-t0:.4f}s")
+    # (2) Semantic cache với normalized query
+    t0 = time.time()
+    norm_embedding = get_embedding(rewritten_prompt)
+    t1 = time.time()
+    print(f"[Timing] Norm Embedding: {t1-t0:.4f}s")
+    norm_sem_cache = get_semantic_cached_result(norm_embedding)
+    if norm_sem_cache:
+        answer = norm_sem_cache['answer']
+        def stream_cached():
+            yield answer
+        print("[Semantic Cache] Trả về từ semantic cache normalized query (stream)")
+        resp = StreamingResponse(stream_cached(), media_type="text/plain")
+        total_end = time.time()
+        print(f"[Timing] Tổng thời gian xử lý (trước khi stream): {total_end-total_start:.4f}s")
+        return resp
+    # Nếu không có cache, thực hiện pipeline như cũ
     # Intent detection
     t0 = time.time()
     intent, intent_metadata = intent_detector.detect_intent(request.question)
     t1 = time.time()
     print(f"[Timing] Intent Detection: {t1-t0:.4f}s")
     print(f"[Intent] Detected: {intent.value}, Confidence: {intent_metadata.get('confidence', 'unknown')}")
-    
-    # Query rewriting trước khi embedding
-    t0 = time.time()
-    rewritten_prompt = query_rewriter.rewrite(conversational_prompt)
-    t1 = time.time()
-    print(f"[Timing] Query rewrite: {t1-t0:.4f}s")
-    
     # Embedding
     t0 = time.time()
     query_embedding = get_embedding(rewritten_prompt)
     t1 = time.time()
     print(f"[Timing] Embedding: {t1-t0:.4f}s")
-    
     # Multi-collection search với BGE reranking
     t0 = time.time()
     results = search_multiple_collections(
@@ -345,15 +415,12 @@ async def chat_stream(request: ChatRequest):
     )
     t1 = time.time()
     print(f"[Timing] Multi-collection search with reranking: {t1-t0:.4f}s")
-    
     # Debug: In ra cấu trúc dữ liệu từ Qdrant
     if results:
         print(f"[Debug] Qdrant result sample payload keys: {list(results[0].payload.keys())}")
-    
     # Chuẩn bị chunks cho prompt manager
     chunks = []
     sources_data = []
-    
     for result in results:
         chunk_data = result.payload.copy()
         # Đảm bảo có trường 'content' hoặc 'text'
@@ -361,13 +428,10 @@ async def chat_stream(request: ChatRequest):
             chunk_data['content'] = chunk_data['text']
         elif 'content' not in chunk_data:
             continue
-            
         chunks.append(chunk_data)
-        
         # Chuẩn bị sources data
         source_data = {k: v for k, v in chunk_data.items() if k not in ['text', 'content']}
         sources_data.append(source_data)
-    
     # Tạo prompt động dựa trên intent và chunks
     t0 = time.time()
     prompt = prompt_manager.create_dynamic_prompt(
@@ -377,11 +441,9 @@ async def chat_stream(request: ChatRequest):
     )
     t1 = time.time()
     print(f"[Timing] Dynamic prompt creation: {t1-t0:.4f}s")
-    
     # Chuẩn bị sources
     sources = []
     for src in sources_data:
-        # Đảm bảo các trường bắt buộc có giá trị mặc định
         safe_src = {
             "law_name": src.get("law_name", src.get("form_name", "Nguồn")),
             "article": src.get("article"),
@@ -390,7 +452,6 @@ async def chat_stream(request: ChatRequest):
             "point": src.get("point")
         }
         sources.append(Source(**safe_src))
-    
     # Tạo generator function để vừa stream vừa lưu lịch sử
     def stream_with_history():
         full_answer = ""
@@ -403,7 +464,6 @@ async def chat_stream(request: ChatRequest):
             print(f"Error in stream: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
-            # Lưu lịch sử sau khi stream hoàn thành
             try:
                 save_chat_message(
                     session_id=session_id,
@@ -411,10 +471,11 @@ async def chat_stream(request: ChatRequest):
                     answer=full_answer,
                     sources=[src.dict() for src in sources]
                 )
+                # (3) Lưu semantic cache cho cả raw và normalized query
+                set_semantic_cached_result(raw_embedding, request.question, full_answer, [src.dict() for src in sources])
+                set_semantic_cached_result(norm_embedding, rewritten_prompt, full_answer, [src.dict() for src in sources])
             except Exception as e:
                 print(f"Không thể lưu chat history: {e}")
-    
-    # Gọi LLM stream (không đo thời gian vì là stream)
     resp = StreamingResponse(stream_with_history(), media_type="text/plain")
     total_end = time.time()
     print(f"[Timing] Tổng thời gian xử lý (trước khi stream): {total_end-total_start:.4f}s")
