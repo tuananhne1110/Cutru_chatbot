@@ -57,7 +57,7 @@ graph TD;
    - **Supabase Service**: Lưu/log dữ liệu, truy vấn lịch sử.
 
 ### 3. Sơ Đồ Luồng Dữ Liệu (Data Flow)
-
+```mermaid
 sequenceDiagram
     participant U as User (Frontend)
     participant B as Backend (FastAPI)
@@ -77,6 +77,7 @@ sequenceDiagram
     B->>B: Guardrails Output Check
     B->>S: Lưu lịch sử chat, log
     B-->>U: Trả kết quả (answer, sources, intent, ...)
+```
 
 ### 4. Tổng Kết
 - Workflow đảm bảo bảo mật, kiểm soát chất lượng, tối ưu tốc độ.
