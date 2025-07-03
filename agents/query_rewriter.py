@@ -1,6 +1,7 @@
 import re
-from typing import Tuple
+from typing import Tuple, Optional, List, Dict
 import time
+import logging
 from transformers.pipelines import pipeline
 
 # Nếu muốn dùng pyvi/vspell thì import ở đây (giả sử chưa cài)
@@ -8,6 +9,8 @@ from transformers.pipelines import pipeline
 # import vspell
 
 from services.llm_service import call_llm_full
+
+logger = logging.getLogger(__name__)
 
 # Các cụm từ mở đầu/ngữ cảnh không cần thiết
 UNNECESSARY_PHRASES = [
@@ -95,25 +98,120 @@ class QueryRewriter:
             return str(result[0]['generated_text']).strip()
         return text
 
-    def rewrite(self, text: str) -> str:
-        print(f"[QueryRewriter] Câu hỏi gốc: {text}")
+    def rewrite_with_context(self, text: str, conversation_context: Optional[str] = None) -> str:
+        """
+        Rewrite câu hỏi với context từ cuộc hội thoại
+        
+        Args:
+            text: Câu hỏi gốc
+            conversation_context: Context từ cuộc hội thoại (optional)
+            
+        Returns:
+            str: Câu hỏi đã được rewrite
+        """
+        logger.info(f"[QueryRewriter] Câu hỏi gốc: {text}")
+        if conversation_context:
+            logger.info(f"[QueryRewriter] Có context: {len(conversation_context)} chars")
+        
         t0 = time.time()
-        cleaned, info = self.rule_based_clean(text)
+        
+        # Nếu có context, tạo prompt kết hợp
+        if conversation_context:
+            combined_text = self._combine_with_context(text, conversation_context)
+            logger.info(f"[QueryRewriter] Kết hợp với context: {combined_text}")
+        else:
+            combined_text = text
+        
+        # Rule-based cleaning
+        cleaned, info = self.rule_based_clean(combined_text)
         t1 = time.time()
-        print(f"[QueryRewriter] Sau rule-based: {cleaned}")
-        print(f"[QueryRewriter] Cụm từ bị loại bỏ: {info.get('removed_phrases', [])}")
-        print(f"[QueryRewriter] Thời gian rule-based: {t1-t0:.4f}s")
+        logger.info(f"[QueryRewriter] Sau rule-based: {cleaned}")
+        logger.info(f"[QueryRewriter] Cụm từ bị loại bỏ: {info.get('removed_phrases', [])}")
+        logger.info(f"[QueryRewriter] Thời gian rule-based: {t1-t0:.4f}s")
+        
+        # Kiểm tra có cần paraphrase không
         if self.need_paraphrase(cleaned, info):
-            print(f"[QueryRewriter] Sử dụng LLM paraphrase!")
+            logger.info(f"[QueryRewriter] Sử dụng LLM paraphrase!")
             t2 = time.time()
             try:
                 rewritten = self.paraphrase_llm(cleaned)
                 t3 = time.time()
-                print(f"[QueryRewriter] Sau paraphrase: {rewritten}")
-                print(f"[QueryRewriter] Thời gian paraphrase LLM: {t3-t2:.4f}s")
+                logger.info(f"[QueryRewriter] Sau paraphrase: {rewritten}")
+                logger.info(f"[QueryRewriter] Thời gian paraphrase LLM: {t3-t2:.4f}s")
+                
+                # Log để debug
+                self._log_rewrite_comparison(text, rewritten, conversation_context)
+                
                 return rewritten
             except Exception as e:
-                print(f"[QueryRewriter] LLM paraphrase failed: {e}")
+                logger.error(f"[QueryRewriter] LLM paraphrase failed: {e}")
                 return cleaned
-        print(f"[QueryRewriter] Không cần paraphrase LLM.")
-        return cleaned 
+        
+        logger.info(f"[QueryRewriter] Không cần paraphrase LLM.")
+        
+        # Log để debug
+        self._log_rewrite_comparison(text, cleaned, conversation_context)
+        
+        return cleaned
+
+    def _combine_with_context(self, question: str, context: str) -> str:
+        """
+        Kết hợp câu hỏi với context để tạo input cho rewriting
+        """
+        # Trích xuất các từ khóa quan trọng từ context
+        context_keywords = self._extract_context_keywords(context)
+        
+        if context_keywords:
+            # Thêm context keywords vào câu hỏi
+            enhanced_question = f"{question} [Context: {', '.join(context_keywords)}]"
+            return enhanced_question
+        
+        return question
+
+    def _extract_context_keywords(self, context: str) -> List[str]:
+        """
+        Trích xuất keywords quan trọng từ context
+        """
+        # Tách context thành các phần
+        lines = context.split('\n')
+        keywords = []
+        
+        for line in lines:
+            if ':' in line and not line.startswith('['):
+                # Lấy phần nội dung sau dấu :
+                content = line.split(':', 1)[1].strip()
+                if content:
+                    # Trích xuất keywords từ content
+                    words = re.findall(r'\b\w+\b', content.lower())
+                    # Lọc stopwords và từ ngắn
+                    filtered_words = [w for w in words if len(w) > 3 and w not in STOPWORDS]
+                    keywords.extend(filtered_words[:3])  # Lấy tối đa 3 từ mỗi dòng
+        
+        # Loại bỏ duplicates và trả về top keywords
+        unique_keywords = list(set(keywords))
+        return unique_keywords[:5]  # Trả về tối đa 5 keywords
+
+    def _log_rewrite_comparison(self, original: str, rewritten: str, context: Optional[str] = None):
+        """Log so sánh câu gốc và câu đã rewrite để debug"""
+        logger.info("=== QUERY REWRITE COMPARISON ===")
+        logger.info(f"Original: {original}")
+        logger.info(f"Rewritten: {rewritten}")
+        if context:
+            logger.info(f"Context used: {len(context)} chars")
+        
+        # Tính độ lệch ý nghĩa đơn giản
+        original_words = set(re.findall(r'\b\w+\b', original.lower()))
+        rewritten_words = set(re.findall(r'\b\w+\b', rewritten.lower()))
+        
+        common_words = original_words.intersection(rewritten_words)
+        total_words = original_words.union(rewritten_words)
+        
+        if total_words:
+            similarity = len(common_words) / len(total_words)
+            logger.info(f"Similarity: {similarity:.2f} ({len(common_words)}/{len(total_words)} words)")
+
+    def rewrite(self, text: str) -> str:
+        """
+        Legacy method - giữ lại để tương thích
+        """
+        return self.rewrite_with_context(text) 

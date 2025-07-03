@@ -115,10 +115,10 @@ phapluat/
 │   ├── form_chunker.py          # Chunking form guidance
 │   ├── term_chunks.py           # Chunking thuật ngữ
 │   └── output_json/             # JSON chunks đã xử lý
-│       ├── all_laws.json        # ~1,200+ law chunks
-│       ├── form_chunks.json     # ~400+ form chunks
-│       ├── term_chunks.json     # ~470+ term chunks
-│       └── procedure_chunks.json # ~5,400+ procedure chunks
+│       ├── all_laws.json        
+│       ├── form_chunks.json     
+│       ├── term_chunks.json     
+│       └── procedure_chunks.json 
 ├── 📁 data/                      # Database & Data Management
 │   ├── create_tables.sql        # SQL schema cho 4 bảng
 │   ├── insert_all_data.py       # Import dữ liệu vào Supabase
@@ -142,7 +142,6 @@ phapluat/
 ├── 📄 main.py                    # FastAPI app entry point
 ├── 📄 config.py                  # Configuration & clients
 ├── 📄 form_embed_qdrant.py      # Tạo embeddings cho 4 loại dữ liệu
-├── 📄 add_new_chunks.py         # Thêm chunks mới vào Qdrant
 ├── 📄 requirements.txt           # Python dependencies
 ├── 📄 docker-compose.yml         # Multi-container setup
 ├── 📄 Dockerfile.backend         # Backend container
