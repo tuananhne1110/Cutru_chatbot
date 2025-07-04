@@ -24,35 +24,31 @@ graph TD;
   B --> D["Supabase (PostgreSQL): Store chat history, metadata"]
 ```
 
-### 2. Mô Tả Chi Tiết Từng Bước (LangGraph-based)
+### 2. Step-by-step Workflow Explanation
 
-A. **Frontend (React 18)**
-   - Người dùng nhập câu hỏi, gửi request qua API `/chat/` hoặc `/chat/stream`.
-   - Gửi kèm `messages` array chứa lịch sử hội thoại.
-   - Nhận kết quả trả về dạng streaming (từng đoạn text), lịch sử chat, trạng thái đang xử lý.
+**A. Frontend (React 18)**
+- User enters a question and sends a request via API `/chat/` or `/chat/stream`.
+- Sends a `messages` array containing the chat history.
+- Receives the answer as a streaming response (text chunks), chat history, and processing status.
 
-B. **Backend (FastAPI + LangGraph)**
-  1. Nhận request
-    Sinh session_id nếu chưa có.
-    Chuẩn hóa lịch sử hội thoại.
-  
-  2. LangGraph RAG Workflow
-    - Context Manager: Xử lý, tóm tắt, chọn các lượt hội thoại liên quan nhất (giới hạn 3-5 turn, tóm tắt nếu quá dài).
-    - Semantic Cache: Kiểm tra cache semantic (embedding) với câu hỏi gốc. Nếu có, trả kết quả luôn.
-    - Guardrails Input: Kiểm tra an toàn đầu vào (LlamaGuard).
-    - Query Rewriter: Làm sạch, paraphrase câu hỏi với context (rule-based + LLM nếu cần).
-    - Semantic Cache (normalized): Kiểm tra cache với câu hỏi đã rewrite.
-    - Intent Detector: Phân loại intent (law, form, term, procedure, ambiguous).
-    - Embedding: Sinh vector embedding cho câu hỏi (PhoBERT/GTE).
-    - Qdrant Search: Tìm kiếm semantic trong các collection tương ứng (top 25).
-    - BGE Reranker: Rerank các kết quả bằng cross-encoder, chọn top 15.
-    - Prompt Manager: Tạo prompt động phù hợp intent, chèn context, metadata.
-    - LLM (DeepSeek): Sinh câu trả lời dựa trên prompt (streaming từng đoạn).
-    - Guardrails Output: Kiểm tra an toàn đầu ra (LlamaGuard).
-    - Lưu lịch sử: Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
-  
-  3. Trả kết quả
-    - Trả về frontend từng đoạn text (streaming), giúp UI hiển thị liên tục.
+**B. Backend (FastAPI + LangGraph)**
+- Receives the request, generates a `session_id` if not provided, and normalizes the chat history.
+- **LangGraph RAG Workflow:**
+  - **Context Manager:** Processes, summarizes, and selects the most relevant conversation turns (limits to 3-5 turns, summarizes if too long).
+  - **Semantic Cache:** Checks semantic cache (embedding) with the original question. If hit, returns the cached answer immediately.
+  - **Guardrails Input:** Checks input safety (LlamaGuard).
+  - **Query Rewriter:** Cleans and paraphrases the question with context (rule-based + LLM if needed).
+  - **Semantic Cache (normalized):** Checks cache with the rewritten question.
+  - **Intent Detector:** Classifies intent (law, form, term, procedure, ambiguous).
+  - **Embedding:** Generates embedding vector for the question (PhoBERT/GTE).
+  - **Qdrant Search:** Performs semantic search in the relevant collections (top 25).
+  - **BGE Reranker:** Reranks results using cross-encoder, selects top 15.
+  - **Prompt Manager:** Builds a dynamic prompt suitable for the intent, inserts context and metadata.
+  - **LLM (DeepSeek):** Generates the answer based on the prompt (streams text chunks).
+  - **Guardrails Output:** Checks output safety (LlamaGuard).
+  - **History Storage:** Saves the question, answer, sources, intent, etc. to Supabase.
+- **Returns the result:**
+  - Streams answer chunks to the frontend, enabling real-time UI updates.
 
 ### 3. Sơ Đồ Luồng Dữ Liệu (Data Flow, LangGraph-based)
 
