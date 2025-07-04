@@ -20,7 +20,7 @@ graph TD;
   C10 --> C11["Context Manager: Build optimized prompt with conversation context"]
   C11 --> C12["LLM (DeepSeek): Generate answer (streaming)"]
   C12 --> C13["LlamaGuard Output: Output safety check"]
-  C13 -->| "Stream answer chunks" | A
+  C13 -->|"Stream answer chunks"| A
   B --> D["Supabase (PostgreSQL): Store chat history, metadata"]
 ```
 
