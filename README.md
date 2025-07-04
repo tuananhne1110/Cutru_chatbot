@@ -301,7 +301,7 @@ AMBIGUOUS → all collections with weights
 
 #### 1. Clone Repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/tuananhne1110/Cutru_chatbot.git
 cd phapluat
 ```
 
@@ -339,7 +339,9 @@ python form_embed_qdrant.py
 ```bash
 cd frontend
 npm install
-npm start
+npm run build
+npm install -g serve
+serve -s build
 ```
 
 #### 6. Chạy Backend
@@ -544,8 +546,6 @@ http://localhost:8000
 "Đăng ký cư trú cần gì?"
 → Intent: AMBIGUOUS → all collections → General prompt
 ```
-
 ---
 
-**Made with ❤️ for the Vietnamese legal community** 
 

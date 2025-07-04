@@ -82,7 +82,8 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
       { id: botMessageId, type: 'bot', content: '', timestamp: new Date().toISOString() }
     ]);
     try {
-      const response = await fetch(`/chat/stream`, {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
