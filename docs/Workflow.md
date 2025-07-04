@@ -54,7 +54,7 @@ B. **Backend (FastAPI + LangGraph)**
   3. Trả kết quả
     - Trả về frontend từng đoạn text (streaming), giúp UI hiển thị liên tục.
 
-### C. Sơ Đồ Luồng Dữ Liệu (Data Flow, LangGraph-based)
+### 3. Sơ Đồ Luồng Dữ Liệu (Data Flow, LangGraph-based)
 
 ```mermaid
 sequenceDiagram
