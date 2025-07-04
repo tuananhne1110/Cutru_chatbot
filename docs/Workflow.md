@@ -1,11 +1,6 @@
 ## 🛠️ Workflow Chi Tiết Toàn Bộ Hệ Thống (Cập nhật mới nhất)
 
 ### 1. Luồng Xử Lý Tổng Thể (LangGraph-based)
-
-## 🔄 System Workflow (Latest, English)
-
-The following diagram describes the end-to-end flow of the chatbot system, from user input to answer streaming and chat history storage:
-
 ```mermaid
 graph TD;
   A["User (Frontend - React)"] -->|"Send question + chat history via API /chat/stream"| B["Backend (FastAPI, LangGraph)"]
@@ -25,7 +20,7 @@ graph TD;
   C10 --> C11["Context Manager: Build optimized prompt with conversation context"]
   C11 --> C12["LLM (DeepSeek): Generate answer (streaming)"]
   C12 --> C13["LlamaGuard Output: Output safety check"]
-  C13 --|"Stream answer chunks"| A
+  C13 -->| "Stream answer chunks" | A
   B --> D["Supabase (PostgreSQL): Store chat history, metadata"]
 ```
 
