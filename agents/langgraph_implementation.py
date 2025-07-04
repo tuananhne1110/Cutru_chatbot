@@ -147,7 +147,7 @@ class RAGNodes:
             # Log chi tiết top 3 tài liệu
             for idx, doc in enumerate(all_docs[:3]):
                 meta = doc.metadata
-                logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content[:100]}...")
+                logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
         state["context_docs"] = all_docs[:15]
         duration = time.time() - start_time
         state["processing_time"]["context_retrieval"] = duration

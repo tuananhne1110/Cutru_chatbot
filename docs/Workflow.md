@@ -2,27 +2,31 @@
 
 ### 1. Luồng Xử Lý Tổng Thể (LangGraph-based)
 
+## 🔄 System Workflow (Latest, English)
+
+The following diagram describes the end-to-end flow of the chatbot system, from user input to answer streaming and chat history storage:
+
 ```mermaid
 graph TD;
-  A["User (Frontend - React)"] -->|"Gửi câu hỏi + chat history qua API /chat/stream"| B["Backend (FastAPI, LangGraph)"]
+  A["User (Frontend - React)"] -->|"Send question + chat history via API /chat/stream"| B["Backend (FastAPI, LangGraph)"]
   B --> C0["LangGraph RAG Workflow"]
-  C0 --> C1["Context Manager: Xử lý conversation history"]
+  C0 --> C1["Context Manager: Process conversation history"]
   C1 --> C2["Semantic Cache (raw query, GTE embedding)"]
-  C2 -- "Hit" --> Z["Trả kết quả từ semantic cache"]
-  C2 -- "Miss" --> C3["LlamaGuard Input: Kiểm tra an toàn đầu vào"]
-  C3 --> C4["Query Rewriter: Làm sạch, paraphrase với context (BARTpho), paraphrase cache"]
+  C2 -- "Hit" --> Z["Return answer from semantic cache"]
+  C2 -- "Miss" --> C3["LlamaGuard Input: Input safety check"]
+  C3 --> C4["Query Rewriter: Clean, paraphrase with context (BARTpho), paraphrase cache"]
   C4 --> C5["Semantic Cache (normalized query, GTE embedding)"]
   C5 -- "Hit" --> Z
-  C5 -- "Miss" --> C6["Intent Detector: Phân loại câu hỏi"]
-  C6 --> C7["Embedding: Sinh vector (Alibaba GTE)"]
+  C5 -- "Miss" --> C6["Intent Detector: Classify question intent"]
+  C6 --> C7["Embedding: Generate vector (Alibaba GTE)"]
   C7 --> C8["Qdrant: Semantic Search (4 collections, 25 candidates)"]
   C8 --> C9["BGE Reranker: Cross-encoder reranking (top 15)"]
-  C9 --> C10["Prompt Manager: Tạo prompt động"]
-  C10 --> C11["Context Manager: Tạo optimized prompt với conversation context"]
-  C11 --> C12["LLM (DeepSeek): Sinh câu trả lời (streaming)"]
-  C12 --> C13["LlamaGuard Output: Kiểm tra an toàn đầu ra"]
-  C13 -->|"Trả kết quả từng phần (stream)"| A
-  B --> D["Supabase (PostgreSQL): Lưu lịch sử chat, metadata"]
+  C9 --> C10["Prompt Manager: Build dynamic prompt"]
+  C10 --> C11["Context Manager: Build optimized prompt with conversation context"]
+  C11 --> C12["LLM (DeepSeek): Generate answer (streaming)"]
+  C12 --> C13["LlamaGuard Output: Output safety check"]
+  C13 --|"Stream answer chunks"| A
+  B --> D["Supabase (PostgreSQL): Store chat history, metadata"]
 ```
 
 **Lưu ý:**
