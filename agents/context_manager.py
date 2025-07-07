@@ -21,7 +21,7 @@ class ContextManager:
     - Tối ưu prompt cho LLM
     """
     
-    def __init__(self, max_turns: int = 5, max_tokens: int = 2000):
+    def __init__(self, max_turns: int = 20, max_tokens: int = 4000):
         self.max_turns = max_turns
         self.max_tokens = max_tokens
         
@@ -63,6 +63,13 @@ class ContextManager:
         # Log để debug
         logger.info(f"Context processing: {len(messages)} original messages -> {len(relevant_turns)} relevant turns")
         logger.info(f"Context length: {len(context_string)} characters")
+        logger.info(f"Max turns configured: {self.max_turns}")
+        
+        # Log chi tiết về relevance scores
+        if relevant_turns:
+            logger.info("Relevance scores for selected turns:")
+            for i, turn in enumerate(relevant_turns[-5:]):  # Log 5 turns gần nhất
+                logger.info(f"  Turn {i+1} ({turn.role}): {turn.relevance_score:.3f} - {turn.content[:100]}...")
         
         return context_string, relevant_turns
     
@@ -93,23 +100,40 @@ class ContextManager:
     
     def _filter_relevant_turns(self, turns: List[ConversationTurn]) -> List[ConversationTurn]:
         """Lọc và sắp xếp turns theo relevance và giới hạn"""
-        # Sắp xếp theo relevance score (cao nhất trước)
-        sorted_turns = sorted(turns, key=lambda x: x.relevance_score or 0, reverse=True)
+        # Nếu có ít turns, trả về tất cả
+        if len(turns) <= self.max_turns:
+            return turns
         
-        # Lấy turns gần nhất nếu có ít hơn max_turns
-        if len(sorted_turns) <= self.max_turns:
-            return sorted_turns
+        # Tính relevance scores nếu chưa có
+        if not any(t.relevance_score for t in turns):
+            self._calculate_relevance_scores(turns, "")
         
-        # Nếu có nhiều turns, ưu tiên relevance cao và gần đây
-        recent_turns = turns[-self.max_turns:]  # Lấy max_turns gần nhất
-        high_relevance_turns = [t for t in sorted_turns[:self.max_turns//2] if t.relevance_score and t.relevance_score > 0.3]
+        # Lấy turns gần nhất (ưu tiên context gần đây)
+        recent_turns = turns[-self.max_turns:]
         
-        # Kết hợp: ưu tiên relevance cao + một số turns gần đây
-        combined_turns = list(set(high_relevance_turns + recent_turns))
+        # Nếu có ít hơn max_turns, trả về tất cả
+        if len(recent_turns) <= self.max_turns:
+            return recent_turns
         
-        # Sắp xếp lại theo thứ tự thời gian
+        # Nếu có nhiều turns, kết hợp relevance và recency
+        # Lấy 70% turns gần nhất và 30% turns có relevance cao
+        recent_count = int(self.max_turns * 0.7)
+        relevance_count = self.max_turns - recent_count
+        
+        # Lấy turns gần nhất
+        selected_turns = recent_turns[-recent_count:]
+        
+        # Lấy thêm turns có relevance cao từ toàn bộ lịch sử
+        sorted_by_relevance = sorted(turns, key=lambda x: x.relevance_score or 0, reverse=True)
+        high_relevance_turns = [t for t in sorted_by_relevance[:relevance_count] 
+                               if t.relevance_score and t.relevance_score > 0.2 
+                               and t not in selected_turns]
+        
+        # Kết hợp và sắp xếp theo thứ tự thời gian
+        combined_turns = selected_turns + high_relevance_turns
         combined_turns.sort(key=lambda x: turns.index(x))
         
+        # Đảm bảo không vượt quá max_turns
         return combined_turns[:self.max_turns]
     
     def _create_context_string(self, turns: List[ConversationTurn], current_question: str) -> str:
@@ -118,14 +142,14 @@ class ContextManager:
             return ""
         
         # Nếu có ít turns, sử dụng trực tiếp
-        if len(turns) <= 3:
+        if len(turns) <= 6:  # Tăng từ 3 lên 6 để giữ nhiều context hơn
             context_parts = ["LỊCH SỬ HỘI THOẠI:"]
             for turn in turns:
                 role_name = "Người dùng" if turn.role == 'user' else "Trợ lý"
                 context_parts.append(f"{role_name}: {turn.content}")
             return "\n".join(context_parts)
         
-        # Nếu có nhiều turns, tạo tóm tắt
+        # Nếu có nhiều turns, tạo tóm tắt thông minh hơn
         return self._create_summarized_context(turns, current_question)
     
     def _create_summarized_context(self, turns: List[ConversationTurn], current_question: str) -> str:
@@ -137,17 +161,17 @@ class ContextManager:
         # Tạo tóm tắt
         summary_parts = ["LỊCH SỬ HỘI THOẠI:"]
         
-        if len(user_messages) > 3:
+        if len(user_messages) > 4:
             # Tóm tắt các câu hỏi trước
             summary_parts.append(f"[TÓM TẮT: Người dùng đã hỏi {len(user_messages)} câu hỏi]")
-            # Giữ lại 2 câu hỏi gần nhất
-            summary_parts.extend([f"Người dùng: {msg}" for msg in user_messages[-2:]])
+            # Giữ lại 3 câu hỏi gần nhất thay vì 2
+            summary_parts.extend([f"Người dùng: {msg}" for msg in user_messages[-3:]])
         else:
             summary_parts.extend([f"Người dùng: {msg}" for msg in user_messages])
         
-        # Thêm assistant responses gần nhất
+        # Thêm assistant responses gần nhất (tăng từ 2 lên 3)
         if assistant_messages:
-            summary_parts.extend([f"Trợ lý: {msg}" for msg in assistant_messages[-2:]])
+            summary_parts.extend([f"Trợ lý: {msg}" for msg in assistant_messages[-3:]])
         
         return "\n".join(summary_parts)
     
@@ -202,4 +226,11 @@ class ContextManager:
                 logger.info(f"  Turn {i+1} ({turn.role}): {turn.relevance_score:.2f} - {turn.content[:50]}...")
 
 # Singleton instance
-context_manager = ContextManager() 
+context_manager = ContextManager()
+
+# Phương thức tiện ích để reset context manager với cấu hình mới
+def reset_context_manager(max_turns: int = 20, max_tokens: int = 4000):
+    """Reset context manager với cấu hình mới"""
+    global context_manager
+    context_manager = ContextManager(max_turns=max_turns, max_tokens=max_tokens)
+    logger.info(f"Context manager reset with max_turns={max_turns}, max_tokens={max_tokens}") 

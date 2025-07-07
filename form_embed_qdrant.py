@@ -457,6 +457,12 @@ for query, collection_name in test_queries:
         for i, result in enumerate(search_result, 1):
             print(f"\nResult {i}:")
             print(f"  Score: {result.score:.4f}")
+            
+            # Check if payload exists
+            if result.payload is None:
+                print("  Payload: None")
+                continue
+                
             if collection_name == "form_chunks":
                 print(f"  Form Code: {result.payload.get('form_code', 'N/A')}")
                 print(f"  Field Name: {result.payload.get('field_name', 'N/A')}")

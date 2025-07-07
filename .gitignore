@@ -71,7 +71,6 @@ log/
 *.backup
 
 # Data files
-*.pkl
 *.pickle
 *.json
 !chunking/output_json/*.json
