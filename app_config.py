@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 import pickle
 from qdrant_client import QdrantClient
 from supabase import create_client, Client
+from typing import Optional
 
 load_dotenv()
 
@@ -11,9 +12,9 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 QDRANT_PATH = os.getenv("QDRANT_PATH", "qdrant_client.pkl")
-
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 # Initialization model embedding
-embedding_model = SentenceTransformer('VoVanPhuc/sup-SimCSE-VietNamese-phobert-base')
+embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
 
 # Initialization QDrant client
 try:
@@ -25,9 +26,13 @@ except Exception as e:
     qdrant_client = None
 
 # Initialization Supabase client
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print(f"Connected to Supabase: {SUPABASE_URL}")
-except Exception as e:
-    print(f"Failed to connect to Supabase: {e}")
-    supabase = None 
+supabase: Optional[Client] = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print(f"Connected to Supabase: {SUPABASE_URL}")
+    except Exception as e:
+        print(f"Failed to connect to Supabase: {e}")
+        supabase = None
+else:
+    print("Supabase URL or KEY not found in environment variables") 

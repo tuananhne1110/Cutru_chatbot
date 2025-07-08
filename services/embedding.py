@@ -1,7 +1,9 @@
-from sentence_transformers import SentenceTransformer
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Khởi tạo model embedding mới
-embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
+# Sử dụng model từ app_config thay vì tạo mới
+from app_config import embedding_model
 
 def get_embedding(text):
     return embedding_model.encode(text, show_progress_bar=False).tolist() 

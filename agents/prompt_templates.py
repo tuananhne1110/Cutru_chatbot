@@ -249,6 +249,8 @@ TRẢ LỜI:"""
         
         for chunk in chunks:
             if category == CategoryType.LAW:
+                logger.info(f"check cateogty ======== : {CategoryType.LAW}")
+
                 # Format cho law chunks
                 law_name = chunk.get("law_name", "Luật")
                 article = chunk.get("article", "")
@@ -270,6 +272,8 @@ TRẢ LỜI:"""
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
             elif category == CategoryType.FORM:
+                logger.info(f"check cateogty ======== : {CategoryType.FORM}")
+
                 # Format cho form chunks
                 form_code = chunk.get("form_code", "Form")
                 field_no = chunk.get("field_no", "")
@@ -288,6 +292,8 @@ TRẢ LỜI:"""
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
             elif category == CategoryType.TERM:
+                logger.info(f"check cateogty ======== : {CategoryType.TERM}")
+
                 # Format cho term chunks
                 term = chunk.get("term", "Thuật ngữ")
                 definition = chunk.get("definition", "")
@@ -303,13 +309,15 @@ TRẢ LỜI:"""
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
             elif category == CategoryType.PROCEDURE:
+                logger.info(f"check cateogty ======== : {CategoryType.PROCEDURE}")
+
                 # Format cho procedure chunks
                 procedure_name = chunk.get("procedure_name", "Thủ tục")
                 procedure_code = chunk.get("procedure_code", "")
                 implementation_level = chunk.get("implementation_level", "")
                 chunk_index = chunk.get("chunk_index", "")
                 total_chunks = chunk.get("total_chunks", "")
-                
+
                 source_info = f"[{procedure_name}"
                 if procedure_code:
                     source_info += f" - {procedure_code}"
@@ -319,13 +327,21 @@ TRẢ LỜI:"""
                     source_info += f" - Phần {chunk_index}/{total_chunks}"
                 source_info += "]"
                 
-                context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
+                context_parts.append(f"{source_info}\n{chunk.get('text', '')}")
+                for k , value in chunk.items():
+                    logger.info(f"key : {k} \nValue : {value}")
+
+
+                
                 
             else:
                 # Format chung
                 source_info = f"[{chunk.get('category', 'unknown')} - {chunk.get('id', 'unknown')}]"
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
-        
+
+        oke = '\n\n'.join(context_parts)
+        logger.info(f"Thông tin cực kỳ quan trọng : {oke}")
+    
         return "\n\n".join(context_parts)
 
 # Singleton instance

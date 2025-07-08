@@ -41,7 +41,9 @@ class PromptManager:
                 IntentType.LAW: CategoryType.LAW,
                 IntentType.FORM: CategoryType.FORM,
                 IntentType.AMBIGUOUS: CategoryType.GENERAL,
-                IntentType.UNKNOWN: CategoryType.GENERAL
+                IntentType.UNKNOWN: CategoryType.GENERAL,
+                IntentType.PROCEDURE: CategoryType.PROCEDURE,
+                IntentType.TERM: CategoryType.TERM,
             }
             category = intent_to_category.get(intent, CategoryType.GENERAL)
         

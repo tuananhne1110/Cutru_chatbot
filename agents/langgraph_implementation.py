@@ -1,8 +1,3 @@
-"""
-LangGraph Implementation cho RAG System
-Tích hợp LangGraph và LangChain vào hệ thống chatbot hiện tại
-"""
-
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.documents import Document
@@ -129,8 +124,21 @@ class RAGNodes:
         logger.info(f"[Retrieval] Embedding (first 5): {embedding[:5]}... (dim={len(embedding)})")
         all_docs = []
         for collection in collections:
-            results = search_qdrant(collection, embedding, limit=15)
+
+            # nâng cấp ở đây
+            # dung them query
+            # collection_name, query_embedding, query, limit=5
+
+            results, filter_condition = search_qdrant(collection_name= collection, query_embedding= embedding, query = query, limit=15)
+            # print(type(results))
+            logger.info(f"[Retrieval] results: {results})")
+            
+            logger.info(f"[Retrieval] filter_condition: {filter_condition})")
+
             logger.info(f"[Retrieval] Collection: {collection}, Results: {len(results)}")
+
+            # kết thúc ở đây
+
             docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
             all_docs.extend(docs)
         logger.info(f"[Retrieval] Total docs before rerank: {len(all_docs)}")
@@ -141,13 +149,16 @@ class RAGNodes:
                 documents=[{"content": doc.page_content} for doc in all_docs],
                 top_k=15
             )
+            
             logger.info(f"[Retrieval] Docs after rerank: {len(reranked_docs)}")
             for i, doc in enumerate(all_docs[:len(reranked_docs)]):
                 doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
+
             # Log chi tiết top 3 tài liệu
             for idx, doc in enumerate(all_docs[:3]):
                 meta = doc.metadata
                 logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
+        
         state["context_docs"] = all_docs[:15]
         duration = time.time() - start_time
         state["processing_time"]["context_retrieval"] = duration
@@ -166,6 +177,12 @@ class RAGNodes:
             chunks=[doc.metadata for doc in docs],
             intent=intent
         )
+
+        logger.info("###"+ "_"*20 + "###")
+        logger.info(f"[Retrieval] finaly prompt: {prompt})")
+        logger.info("###"+ "_"*20 + "###")
+
+
         state["prompt"] = prompt  # Store prompt for streaming
         state["answer"] = None
         state["sources"] = []
@@ -226,12 +243,48 @@ class RAGNodes:
 # WORKFLOW CONSTRUCTION
 # ============================================================================
 
+# def create_rag_workflow():
+#     """Tạo RAG workflow với LangGraph"""
+#     rag_nodes = RAGNodes()
+#     workflow = StateGraph(ChatState)
+#     workflow.add_node("set_intent", rag_nodes.set_intent)
+
+
+#     workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
+
+#     workflow.add_node("retrieve", rag_nodes.retrieve_context)
+#     workflow.add_node("generate", rag_nodes.generate_answer)
+#     workflow.add_node("validate", rag_nodes.validate_output)
+#     workflow.add_node("update_memory", rag_nodes.update_memory)
+#     workflow.add_edge(START, "set_intent")
+#     workflow.add_conditional_edges(
+#         "set_intent",
+#         rag_nodes.route_by_intent,
+#         {
+#             "law_search": "rewrite",
+#             "form_search": "rewrite", 
+#             "procedure_search": "rewrite",
+#             "general_search": "rewrite"
+#         }
+#     )
+#     workflow.add_edge("rewrite", "retrieve")
+#     workflow.add_edge("retrieve", "generate")
+#     workflow.add_edge("generate", "validate")
+#     workflow.add_edge("validate", "update_memory")
+#     workflow.add_edge("update_memory", END)
+#     app = workflow.compile(checkpointer=MemorySaver())
+#     return app
+
+
 def create_rag_workflow():
     """Tạo RAG workflow với LangGraph"""
     rag_nodes = RAGNodes()
     workflow = StateGraph(ChatState)
     workflow.add_node("set_intent", rag_nodes.set_intent)
-    workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
+
+    # BỎ QUA bước rewrite
+    # workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
+
     workflow.add_node("retrieve", rag_nodes.retrieve_context)
     workflow.add_node("generate", rag_nodes.generate_answer)
     workflow.add_node("validate", rag_nodes.validate_output)
@@ -241,13 +294,14 @@ def create_rag_workflow():
         "set_intent",
         rag_nodes.route_by_intent,
         {
-            "law_search": "rewrite",
-            "form_search": "rewrite", 
-            "procedure_search": "rewrite",
-            "general_search": "rewrite"
+            # Trỏ trực tiếp sang "retrieve" thay vì "rewrite"
+            "law_search": "retrieve",
+            "form_search": "retrieve", 
+            "procedure_search": "retrieve",
+            "general_search": "retrieve"
         }
     )
-    workflow.add_edge("rewrite", "retrieve")
+    # workflow.add_edge("rewrite", "retrieve")  # Bỏ dòng này
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", "validate")
     workflow.add_edge("validate", "update_memory")

@@ -1,9 +1,11 @@
 import json
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType
 import os
 import pickle
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from app_config import embedding_model
 
 # 1. Load data from both JSON files
 json_files = [
@@ -45,10 +47,114 @@ print(f"Law chunks: {len(law_chunks)}")
 print(f"Term chunks: {len(term_chunks)}")
 print(f"Procedure chunks: {len(procedure_chunks)}")
 
-# 2. Khởi tạo model embedding
-model = SentenceTransformer('VoVanPhuc/sup-SimCSE-VietNamese-phobert-base')
+# 2. Sử dụng model embedding từ app_config
+model = embedding_model
 
-# 3. Chuẩn bị text cho embedding
+# 3. Helper function để tạo collection với payload schema
+def create_collection_with_schema(client, collection_name, vector_size, schema_type="form"):
+    """Tạo collection với payload schema tương ứng"""
+    try:
+        client.get_collection(collection_name)
+        print(f"Using existing collection: {collection_name}")
+        return
+    except:
+        pass
+    
+    # Define payload schema based on type
+    if schema_type == "form":
+        payload_schema = {
+            "text": PayloadSchemaType.TEXT,
+            "form_code": PayloadSchemaType.KEYWORD,
+            "form_name": PayloadSchemaType.TEXT,
+            "field_no": PayloadSchemaType.KEYWORD,
+            "field_name": PayloadSchemaType.TEXT,
+            "chunk_type": PayloadSchemaType.KEYWORD,
+            "content": PayloadSchemaType.TEXT,
+            "note": PayloadSchemaType.TEXT
+        }
+    elif schema_type == "law":
+        payload_schema = {
+            "text": PayloadSchemaType.TEXT,
+            "law_code": PayloadSchemaType.KEYWORD,
+            "law_name": PayloadSchemaType.TEXT,
+            "promulgator": PayloadSchemaType.KEYWORD,
+            "promulgation_date": PayloadSchemaType.DATETIME,
+            "effective_date": PayloadSchemaType.DATETIME,
+            "law_type": PayloadSchemaType.KEYWORD,
+            "article": PayloadSchemaType.KEYWORD,
+            "chapter": PayloadSchemaType.KEYWORD,
+            "clause": PayloadSchemaType.KEYWORD,
+            "point": PayloadSchemaType.KEYWORD,
+            "content": PayloadSchemaType.TEXT
+        }
+    elif schema_type == "term":
+        payload_schema = {
+            "text": PayloadSchemaType.TEXT,
+            "term": PayloadSchemaType.KEYWORD,
+            "definition": PayloadSchemaType.TEXT,
+            "content": PayloadSchemaType.TEXT,
+            "category": PayloadSchemaType.KEYWORD,
+            "source": PayloadSchemaType.KEYWORD,
+            "article": PayloadSchemaType.KEYWORD,
+            "synonyms": PayloadSchemaType.TEXT,
+            "related_terms": PayloadSchemaType.TEXT,
+            "examples": PayloadSchemaType.TEXT
+        }
+    elif schema_type == "procedure":
+        payload_schema = {
+            "text": PayloadSchemaType.TEXT,
+            "procedure_code": PayloadSchemaType.KEYWORD,
+            "decision_number": PayloadSchemaType.KEYWORD,
+            "procedure_name": PayloadSchemaType.TEXT,
+            "implementation_level": PayloadSchemaType.KEYWORD,
+            "procedure_type": PayloadSchemaType.KEYWORD,
+            "field": PayloadSchemaType.KEYWORD,
+            "implementation_subject": PayloadSchemaType.TEXT,
+            "implementing_agency": PayloadSchemaType.KEYWORD,
+            "competent_authority": PayloadSchemaType.KEYWORD,
+            "application_receiving_address": PayloadSchemaType.TEXT,
+            "authorized_agency": PayloadSchemaType.KEYWORD,
+            "coordinating_agency": PayloadSchemaType.KEYWORD,
+            "implementation_result": PayloadSchemaType.TEXT,
+            "requirements": PayloadSchemaType.TEXT,
+            "keywords": PayloadSchemaType.TEXT,
+            "content_type": PayloadSchemaType.KEYWORD,
+            "source_section": PayloadSchemaType.KEYWORD,
+            "table_title": PayloadSchemaType.TEXT,
+            "table_index": PayloadSchemaType.KEYWORD,
+            "row_index": PayloadSchemaType.KEYWORD,
+            "column_name": PayloadSchemaType.KEYWORD,
+            "chunk_index": PayloadSchemaType.INTEGER,
+            "total_chunks": PayloadSchemaType.INTEGER,
+            "content": PayloadSchemaType.TEXT
+        }
+    else:
+        payload_schema = {}
+    
+    # Create collection first
+    client.recreate_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=vector_size,
+            distance=Distance.COSINE
+        )
+    )
+    print(f"Created new collection: {collection_name}")
+    
+    # Create payload indexes for better search performance
+    try:
+        for field_name, field_type in payload_schema.items():
+            if field_type in [PayloadSchemaType.KEYWORD, PayloadSchemaType.INTEGER, PayloadSchemaType.DATETIME]:
+                client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field_name,
+                    field_schema=field_type
+                )
+        print(f"Created payload indexes for {collection_name}")
+    except Exception as e:
+        print(f"Warning: Could not create all payload indexes for {collection_name}: {e}")
+
+# 4. Chuẩn bị text cho embedding
 def prepare_text_for_embedding(chunk):
     """
     Prepare text for embedding by combining relevant fields
@@ -132,22 +238,10 @@ if form_chunks:
                     cleaned[k] = str(v)
         form_metadatas.append(cleaned)
     
-    # Create form_chunks collection
+    # Create form_chunks collection with payload schema
     collection_name = "form_chunks"
     vector_size = len(form_embeddings[0])
-    
-    try:
-        client.get_collection(collection_name)
-        print(f"Using existing collection: {collection_name}")
-    except:
-        client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=vector_size,
-                distance=Distance.COSINE
-            )
-        )
-        print(f"Created new collection: {collection_name}")
+    create_collection_with_schema(client, collection_name, vector_size, "form")
     
     # Add form data to QDrant
     print(f"Adding {len(form_chunks)} form documents to QDrant...")
@@ -205,22 +299,10 @@ if law_chunks:
                     cleaned[k] = str(v)
         law_metadatas.append(cleaned)
     
-    # Create legal_chunks collection
+    # Create legal_chunks collection with payload schema
     collection_name = "legal_chunks"
     vector_size = len(law_embeddings[0])
-    
-    try:
-        client.get_collection(collection_name)
-        print(f"Using existing collection: {collection_name}")
-    except:
-        client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=vector_size,
-                distance=Distance.COSINE
-            )
-        )
-        print(f"Created new collection: {collection_name}")
+    create_collection_with_schema(client, collection_name, vector_size, "law")
     
     # Add law data to QDrant
     print(f"Adding {len(law_chunks)} law documents to QDrant...")
@@ -278,22 +360,10 @@ if term_chunks:
                     cleaned[k] = str(v)
         term_metadatas.append(cleaned)
     
-    # Create term_chunks collection
+    # Create term_chunks collection with payload schema
     collection_name = "term_chunks"
     vector_size = len(term_embeddings[0])
-    
-    try:
-        client.get_collection(collection_name)
-        print(f"Using existing collection: {collection_name}")
-    except:
-        client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=vector_size,
-                distance=Distance.COSINE
-            )
-        )
-        print(f"Created new collection: {collection_name}")
+    create_collection_with_schema(client, collection_name, vector_size, "term")
     
     # Add term data to QDrant
     print(f"Adding {len(term_chunks)} term documents to QDrant...")
@@ -351,22 +421,10 @@ if procedure_chunks:
                     cleaned[k] = str(v)
         procedure_metadatas.append(cleaned)
     
-    # Create procedure_chunks collection
+    # Create procedure_chunks collection with payload schema
     collection_name = "procedure_chunks"
     vector_size = len(procedure_embeddings[0])
-    
-    try:
-        client.get_collection(collection_name)
-        print(f"Using existing collection: {collection_name}")
-    except:
-        client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=vector_size,
-                distance=Distance.COSINE
-            )
-        )
-        print(f"Created new collection: {collection_name}")
+    create_collection_with_schema(client, collection_name, vector_size, "procedure")
     
     # Add procedure data to QDrant
     print(f"Adding {len(procedure_chunks)} procedure documents to QDrant...")
