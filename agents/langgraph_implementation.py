@@ -239,6 +239,29 @@ class RAGNodes:
         logger.info(f"[LangGraph] Memory update: {duration:.4f}s")
         return state
 
+    def semantic_cache(self, state: ChatState) -> ChatState:
+        """Kiểm tra semantic cache (nếu có)"""
+        from services.embedding import get_embedding
+        from services.cache_service import get_semantic_cached_result
+        query = state["question"]
+        embedding = get_embedding(query)
+        cached = get_semantic_cached_result(embedding)
+        if cached:
+            state["answer"] = cached.get("answer", "")
+            state["sources"] = cached.get("sources", [])
+            state["error"] = None
+            # Nếu hit cache, có thể set flag để dừng sớm nếu muốn
+        return state
+    def guardrails_input(self, state: ChatState) -> ChatState:
+        """Kiểm tra an toàn đầu vào (LlamaGuard Input)"""
+        from agents.guardrails import Guardrails
+        guardrails = Guardrails()
+        result = guardrails.validate_input(state["question"])
+        if not result["is_safe"]:
+            state["answer"] = guardrails.get_fallback_message(result["block_reason"])
+            state["error"] = "input_validation_failed"
+        return state
+
 # ============================================================================
 # WORKFLOW CONSTRUCTION
 # ============================================================================
@@ -277,31 +300,22 @@ class RAGNodes:
 
 
 def create_rag_workflow():
-    """Tạo RAG workflow với LangGraph"""
+    """Tạo RAG workflow với LangGraph (đầy đủ các bước cũ)"""
     rag_nodes = RAGNodes()
     workflow = StateGraph(ChatState)
     workflow.add_node("set_intent", rag_nodes.set_intent)
-
-    # BỎ QUA bước rewrite
-    # workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
-
+    workflow.add_node("semantic_cache", rag_nodes.semantic_cache)  # NEW
+    workflow.add_node("guardrails_input", rag_nodes.guardrails_input)  # NEW
+    workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
     workflow.add_node("retrieve", rag_nodes.retrieve_context)
     workflow.add_node("generate", rag_nodes.generate_answer)
     workflow.add_node("validate", rag_nodes.validate_output)
     workflow.add_node("update_memory", rag_nodes.update_memory)
     workflow.add_edge(START, "set_intent")
-    workflow.add_conditional_edges(
-        "set_intent",
-        rag_nodes.route_by_intent,
-        {
-            # Trỏ trực tiếp sang "retrieve" thay vì "rewrite"
-            "law_search": "retrieve",
-            "form_search": "retrieve", 
-            "procedure_search": "retrieve",
-            "general_search": "retrieve"
-        }
-    )
-    # workflow.add_edge("rewrite", "retrieve")  # Bỏ dòng này
+    workflow.add_edge("set_intent", "semantic_cache")
+    workflow.add_edge("semantic_cache", "guardrails_input")
+    workflow.add_edge("guardrails_input", "rewrite")
+    workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", "validate")
     workflow.add_edge("validate", "update_memory")

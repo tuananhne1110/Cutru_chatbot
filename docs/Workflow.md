@@ -5,23 +5,16 @@
 graph TD;
   A["User (Frontend - React)"] -->|"Send question + chat history via API /chat/stream"| B["Backend (FastAPI, LangGraph)"]
   B --> C0["LangGraph RAG Workflow"]
-  C0 --> C1["Context Manager: Process conversation history"]
-  C1 --> C2["Semantic Cache (raw query, GTE embedding)"]
-  C2 -- "Hit" --> Z["Return answer from semantic cache"]
-  C2 -- "Miss" --> C3["LlamaGuard Input: Input safety check"]
-  C3 --> C4["Query Rewriter: Clean, paraphrase with context (BARTpho), paraphrase cache"]
-  C4 --> C5["Semantic Cache (normalized query, GTE embedding)"]
-  C5 -- "Hit" --> Z
-  C5 -- "Miss" --> C6["Intent Detector: Classify question intent"]
-  C6 --> C7["Embedding: Generate vector (Alibaba GTE)"]
-  C7 --> C8["Qdrant: Semantic Search (4 collections, 25 candidates)"]
-  C8 --> C9["BGE Reranker: Cross-encoder reranking (top 15)"]
-  C9 --> C10["Prompt Manager: Build dynamic prompt"]
-  C10 --> C11["Context Manager: Build optimized prompt with conversation context"]
-  C11 --> C12["LLM (DeepSeek): Generate answer (streaming)"]
-  C12 --> C13["LlamaGuard Output: Output safety check"]
-  C13 -->|"Stream answer chunks"| A
-  B --> D["Supabase (PostgreSQL): Store chat history, metadata"]
+  C0 --> C1["set_intent: Phân loại intent"]
+  C1 --> C2["semantic_cache: Kiểm tra cache semantic"]
+  C2 --> C3["guardrails_input: Kiểm duyệt an toàn đầu vào (LlamaGuard)"]
+  C3 --> C4["rewrite: Làm sạch, paraphrase câu hỏi (BARTpho)"]
+  C4 --> C5["retrieve: Semantic Search (Qdrant, 4 collections, 25 candidates)"]
+  C5 --> C6["generate: Tạo prompt động"]
+  C6 --> C7["validate: Kiểm duyệt đầu ra (LlamaGuard Output)"]
+  C7 --> C8["update_memory: Cập nhật lịch sử hội thoại"]
+  C8 --> D["Supabase (PostgreSQL): Store chat history, metadata"]
+  C7 -->|"Stream answer chunks"| A
 ```
 
 ### 2. Mô tả chi tiết từng bước
@@ -34,19 +27,14 @@ graph TD;
 **B. Backend (FastAPI + LangGraph)**
 - Nhận request, sinh `session_id` nếu chưa có, chuẩn hóa lịch sử hội thoại.
 - **LangGraph RAG Workflow:**
-  - **Context Manager:** Xử lý, tóm tắt, chọn các lượt hội thoại liên quan nhất (giới hạn 3-5 lượt, tóm tắt nếu quá dài).
-  - **Semantic Cache:** Kiểm tra cache semantic (embedding) với câu hỏi gốc. Nếu trùng, trả kết quả luôn.
-  - **Guardrails Input:** Kiểm tra an toàn đầu vào (LlamaGuard).
-  - **Query Rewriter:** Làm sạch, paraphrase câu hỏi với context (rule-based + LLM nếu cần).
-  - **Semantic Cache (normalized):** Kiểm tra cache với câu hỏi đã rewrite.
-  - **Intent Detector:** Phân loại intent (law, form, term, procedure, ambiguous).
-  - **Embedding:** Sinh vector embedding cho câu hỏi (PhoBERT/GTE).
-  - **Qdrant Search:** Tìm kiếm semantic trong các collection tương ứng (top 25).
-  - **BGE Reranker:** Rerank các kết quả bằng cross-encoder, chọn top 15.
-  - **Prompt Manager:** Tạo prompt động phù hợp intent, chèn context và metadata.
-  - **LLM (DeepSeek):** Sinh câu trả lời dựa trên prompt (streaming từng đoạn).
-  - **Guardrails Output:** Kiểm tra an toàn đầu ra (LlamaGuard).
-  - **Lưu lịch sử:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
+  1. **set_intent:** Phân loại intent (law, form, term, procedure, ambiguous).
+  2. **semantic_cache:** Kiểm tra cache semantic (embedding) với câu hỏi gốc. Nếu trùng, trả kết quả luôn.
+  3. **guardrails_input:** Kiểm duyệt an toàn đầu vào (LlamaGuard Input). Nếu vi phạm, trả về thông báo an toàn.
+  4. **rewrite:** Làm sạch, paraphrase câu hỏi với context (rule-based + LLM nếu cần).
+  5. **retrieve:** Tìm kiếm semantic trong các collection tương ứng (top 25).
+  6. **generate:** Tạo prompt động phù hợp intent, chèn context và metadata.
+  7. **validate:** Kiểm duyệt đầu ra (LlamaGuard Output).
+  8. **update_memory:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
 - **Trả kết quả:**
   - Stream từng đoạn text về frontend, giúp UI hiển thị liên tục theo thời gian thực.
 
@@ -56,49 +44,48 @@ graph TD;
 sequenceDiagram
     participant U as User (Frontend)
     participant B as Backend (FastAPI + LangGraph)
-    participant CM as Context Manager
-    participant C as Semantic Cache
-    participant P as Paraphrase Cache
-    participant Q as Qdrant (Vector DB)
-    participant R as BGE Reranker
+    participant L as LangGraph Workflow
     participant S as Supabase (PostgreSQL)
-    participant L as LLM (DeepSeek)
     U->>B: POST /chat/ (question + messages)
-    B->>CM: Process conversation history
-    CM-->>B: Context string + processed turns
-    B->>C: Check semantic cache (raw query)
+    B->>L: set_intent
+    L->>L: semantic_cache
     alt Cache hit
-        C-->>B: Cached answer
+        L-->>B: Cached answer
         B-->>U: Trả kết quả
     else Cache miss
-    B->>B: LlamaGuard Input Check
-        B->>P: Check paraphrase cache
-        alt Paraphrase cache hit
-            P-->>B: Paraphrased query
-        else Paraphrase cache miss
-            B->>B: Query Rewriter with context (rule-based/BARTpho)
-            B->>P: Save paraphrase
-        end
-        B->>C: Check semantic cache (normalized query)
-        alt Cache hit
-            C-->>B: Cached answer
+        L->>L: guardrails_input
+        alt Input blocked
+            L-->>B: Fallback message
             B-->>U: Trả kết quả
-        else Cache miss
-    B->>B: Intent Detection
-    B->>Q: Semantic Search (intent-based, 25 candidates)
-    Q-->>B: Top-25 Chunks
-    B->>R: BGE Reranking (cross-encoder)
-    R-->>B: Top-15 Reranked Chunks
-    B->>B: Prompt Manager (context)
-    B->>CM: Create optimized prompt with conversation context
-    CM-->>B: Optimized prompt
-    B->>L: Gọi LLM sinh câu trả lời
-    L-->>B: Answer
-    B->>B: LlamaGuard Output Check
-    B->>S: Lưu lịch sử chat, log
-            B->>C: Save semantic cache (raw + normalized)
-            B-->>U: Trả kết quả
+        else Input safe
+            L->>L: rewrite
+            L->>L: retrieve
+            L->>L: generate
+            L->>L: validate
+            L->>L: update_memory
+            L->>S: Lưu lịch sử chat, log
+            L-->>B: Trả kết quả
+            B-->>U: Stream answer chunks
         end
     end
 ```
+
+### 4. Tóm tắt các bước chính
+
+1. **set_intent:** Phân loại intent câu hỏi
+2. **semantic_cache:** Trả kết quả nếu đã có trong cache semantic
+3. **guardrails_input:** Kiểm duyệt an toàn đầu vào
+4. **rewrite:** Làm sạch, paraphrase câu hỏi
+5. **retrieve:** Semantic search + rerank
+6. **generate:** Tạo prompt động
+7. **validate:** Kiểm duyệt đầu ra
+8. **update_memory:** Lưu lịch sử, metadata
+
+### 5. Lưu ý
+- Nếu **semantic cache hit**: trả kết quả luôn, bỏ qua các bước sau.
+- Nếu **input bị block**: trả fallback message, bỏ qua các bước sau.
+- Các bước còn lại thực hiện như pipeline cũ.
+
+---
+
 
