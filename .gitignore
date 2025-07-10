@@ -49,10 +49,10 @@ Thumbs.db
 
 # Docker
 docker/
-docker-compose.yml
+# docker-compose.yml
 docker-compose.override.yml
-Dockerfile.backend
-Dockerfile.frontend
+# Dockerfile.backend
+# Dockerfile.frontend
 
 # Database
 *.db
