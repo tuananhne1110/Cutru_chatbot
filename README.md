@@ -26,7 +26,7 @@ Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 - **Frontend**: React 18 với UI/UX hiện đại
 - **Vector Database**: Qdrant cho semantic search với 4 collections
 - **Database**: Supabase cho lưu trữ dữ liệu và lịch sử
-- **AI Models**: DeepSeek V3 cho LLM, Vietnamese PhoBERT cho embedding
+- **AI Models**: AWS Bedrock (Llama 3.1 8B) cho LLM, Vietnamese PhoBERT cho embedding
 - **BGE Reranker**: Cross-encoder reranking để cải thiện chất lượng kết quả ⭐ NEW
 - **Guardrails**: 4 lớp bảo vệ multi-layer defense-in-depth
 - **Intent Detection**: Phân loại thông minh câu hỏi theo 4 loại dữ liệu
@@ -134,7 +134,7 @@ phapluat/
 │   ├── chat.py                  # Chat endpoints với intent detection
 │   └── health.py                # Health check
 ├── 📁 services/                  # Business Logic
-│   ├── llm_service.py           # LLM integration (DeepSeek)
+│   ├── llm_service.py           # LLM integration (AWS Bedrock)
 │   ├── embedding.py             # Embedding service (PhoBERT)
 │   ├── qdrant_service.py        # Vector search
 │   └── supabase_service.py      # Database operations
@@ -492,8 +492,8 @@ http://localhost:8000
 
 #### **3. LLM API Error**
 ```bash
-# Nguyên nhân: API key không đúng hoặc hết quota
-# Giải pháp: Kiểm tra CHUTES_API_KEY trong .env
+# Nguyên nhân: AWS credentials không đúng hoặc hết quota
+# Giải pháp: Kiểm tra AWS credentials trong .env
 ```
 
 #### **4. Supabase Connection Error**

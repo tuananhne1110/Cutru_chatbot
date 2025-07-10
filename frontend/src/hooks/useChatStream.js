@@ -77,6 +77,7 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
     setInputMessage('');
     setIsLoading(true);
     const botMessageId = Date.now() + 1;
+    // Xóa hết message bot cũ trước khi tạo mới
     setMessages(prev => [
       ...prev,
       { id: botMessageId, type: 'bot', content: '', timestamp: new Date().toISOString() }
@@ -107,17 +108,51 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
       const decoder = new TextDecoder();
       let result = '';
       let done = false;
-      
+      let buffer = '';
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
-          const chunk = decoder.decode(value);
-          if (chunk) {
-            result += chunk;
-            setMessages(prev => prev.map(msg =>
-              msg.id === botMessageId ? { ...msg, content: result } : msg
-            ));
+          buffer += decoder.decode(value, { stream: !done });
+          let lines = buffer.split(/\n\n/);
+          buffer = lines.pop() || '';
+          for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('data:')) {
+              const jsonStr = line.replace(/^data:\s*/, '');
+              try {
+                const obj = JSON.parse(jsonStr); // PHẢI parse JSON!
+                if (obj.type === 'chunk' && obj.content) {
+                  result += obj.content;
+                  setMessages(prev => {
+                    const idx = prev.findIndex(msg => msg.id === botMessageId);
+                    if (idx !== -1) {
+                      const updated = [...prev];
+                      updated[idx] = { ...updated[idx], content: result };
+                      return updated;
+                    } else {
+                      return prev;
+                    }
+                  });
+                }
+                if (obj.type === 'sources') {
+                  setMessages(prev => {
+                    const newMessages = [...prev];
+                    // Tìm message bot cuối cùng và gán sources
+                    for (let i = newMessages.length - 1; i >= 0; i--) {
+                      if (newMessages[i].type === 'bot') {
+                        newMessages[i].sources = obj.sources;
+                        break;
+                      }
+                    }
+                    return newMessages;
+                  });
+                  return;
+                }
+              } catch (e) {
+                // Bỏ qua lỗi parse
+              }
+            }
           }
         }
       }
@@ -134,6 +169,10 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    console.log('Current messages:', messages);
+  }, [messages]);
 
   return {
     messages,

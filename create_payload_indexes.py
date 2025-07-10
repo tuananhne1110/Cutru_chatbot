@@ -113,12 +113,24 @@ def main():
         "category": PayloadSchemaType.KEYWORD
     }
     
+    # 5. Template Chunks Collection
+    template_fields = {
+        "code": PayloadSchemaType.KEYWORD,
+        "name": PayloadSchemaType.TEXT,
+        "description": PayloadSchemaType.TEXT,
+        "file_url": PayloadSchemaType.TEXT,
+        "procedures": PayloadSchemaType.TEXT,
+        "category": PayloadSchemaType.KEYWORD,
+        "content": PayloadSchemaType.TEXT
+    }
+    
     # Collections configuration
     collections_config = {
         "form_chunks": form_fields,
         "legal_chunks": law_fields,
         "term_chunks": term_fields,
-        "procedure_chunks": procedure_fields
+        "procedure_chunks": procedure_fields,
+        "template_chunks": template_fields
     }
     
     total_success = 0

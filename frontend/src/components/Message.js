@@ -14,8 +14,45 @@ function Message({ message, showSources, toggleSources }) {
         <div className="flex items-start space-x-2">
           <div className="flex-1">
             <div className="prose prose-sm max-w-none">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+              {/* Loại bỏ hoặc thay thế link file trong nội dung trả lời */}
+              {(() => {
+                const fileUrlRegex = /https?:\/\/\S+\.(docx?|pdf|xlsx?|zip|rar)(\?\S*)?/gi;
+                // Thay thế link file bằng thông báo ngắn gọn
+                const contentWithoutLinks = message.content.replace(fileUrlRegex, '[📥 Tải về mẫu ở phía dưới]');
+                return <ReactMarkdown>{contentWithoutLinks}</ReactMarkdown>;
+              })()}
             </div>
+            {/* Nút tải file nếu có file_url hoặc url hợp lệ trong sources */}
+            {message.sources && message.sources.length > 0 && (() => {
+              // Chỉ lấy file đầu tiên có file_url hợp lệ
+              const firstDownloadable = message.sources.find(
+                source => (source.file_url || source.url || '').match(/\.(docx?|pdf|xlsx?|zip|rar)(\?.*)?$/i)
+              );
+              if (firstDownloadable) {
+                const fileUrl = firstDownloadable.file_url || firstDownloadable.url;
+                const fileName =
+                  firstDownloadable.code
+                    ? `mau_${firstDownloadable.code}.docx`
+                    : firstDownloadable.title
+                    ? firstDownloadable.title.replace(/\s+/g, '_') + '.docx'
+                    : fileUrl.split('/').pop()?.split('?')[0] || 'downloaded_file';
+                return (
+                  <div className="mt-4">
+                    <a
+                      href={fileUrl}
+                      download={fileName}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold shadow underline"
+                      style={{ textDecoration: 'underline', cursor: 'pointer' }}
+                    >
+                      📥 Tải về {firstDownloadable.code ? `mẫu ${firstDownloadable.code}` : fileName}
+                    </a>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {message.sources && message.sources.length > 0 && (
               <div className="mt-3">
                 <button
@@ -31,11 +68,33 @@ function Message({ message, showSources, toggleSources }) {
                   <div className="mt-2 space-y-1">
                     {message.sources.map((source, index) => (
                       <div key={index} className="text-xs bg-blue-50 p-2 rounded">
-                        <div className="font-medium">{source.law_name}</div>
-                        {source.article && <div>{source.article}</div>}
-                        {source.chapter && <div>Chương: {source.chapter}</div>}
-                        {source.clause && <div>Khoản: {source.clause}</div>}
-                        {source.point && <div>Điểm: {source.point}</div>}
+                        {/* Nếu là nguồn luật */}
+                        {source.law_name && (
+                          <>
+                            <div className="font-medium">{source.law_name}</div>
+                            {source.article && <div>{source.article}</div>}
+                            {source.chapter && <div>Chương: {source.chapter}</div>}
+                            {source.clause && <div>Khoản: {source.clause}</div>}
+                            {source.point && <div>Điểm: {source.point}</div>}
+                          </>
+                        )}
+                        {/* Nếu là nguồn biểu mẫu */}
+                        {source.title && (
+                          <>
+                            <div className="font-medium">{source.title} {source.code && <span>({source.code})</span>}</div>
+                            {source.file_url && (
+                              <a
+                                href={source.file_url}
+                                download={source.code ? `mau_${source.code}.docx` : undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 underline"
+                              >
+                                📥 Tải về
+                              </a>
+                            )}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

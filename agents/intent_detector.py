@@ -12,6 +12,7 @@ class IntentType(Enum):
     FORM = "form"         # Hướng dẫn điền biểu mẫu
     TERM = "term"         # Tra cứu thuật ngữ, định nghĩa
     PROCEDURE = "procedure"  # Thủ tục hành chính
+    TEMPLATE = "template"     # Biểu mẫu gốc (template)
     AMBIGUOUS = "ambiguous"  # Không rõ ràng, cần search cả hai
     UNKNOWN = "unknown"   # Không xác định được
 
@@ -42,11 +43,10 @@ class IntentDetector:
         
         # Keywords cho intent FORM
         self.form_keywords = [
-            r'\b(mẫu|biểu mẫu|tờ khai|đơn|phiếu|giấy)\b',
+            r'\b(biểu mẫu|tờ khai|đơn|phiếu|giấy)\b',
             r'\b(điền|khai|ghi|viết|kê khai)\b',
             r'\b(mục|trường|ô|cột|dòng)\s+\d+',
             r'\b(hướng dẫn|chỉ dẫn|giải thích)\b',
-            r'\b(CT\d+|mẫu\s+\d+|[A-Z]{2}\d+)\b',
             r'\b(ký tên|chữ ký|ngày tháng)\b',
             r'\b(đính kèm|kèm theo|giấy tờ)\b',
             r'\b(điền đầy đủ|ghi rõ|viết rõ)\b',
@@ -98,12 +98,21 @@ class IntentDetector:
             r'\b(kiểm tra|xác minh|thẩm định)\b'
         ]
         
+        # Keywords cho intent TEMPLATE
+        self.template_keywords = [
+            r'\b(biểu mẫu gốc|template|file mẫu|tải mẫu|download mẫu|file docx|file pdf|mẫu chuẩn|mẫu gốc)\b',
+            r'\b(mẫu\s+(CT01|CT02|NA17|TK\d+))\b',
+            r'\b(CT01|CT02|NA17|TK\d+)\b',
+            r'\b(tải\s+mẫu|download\s+mẫu|file\s+mẫu)\b'
+        ]
+        
         # Compile patterns
         self.law_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.law_keywords]
         self.form_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.form_keywords]
         self.term_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.term_keywords]
         self.procedure_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.procedure_keywords]
         self.ambiguous_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.ambiguous_keywords]
+        self.template_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in self.template_keywords]
     
     def detect_intent(self, query: str) -> Tuple[IntentType, Dict]:
         """
@@ -123,6 +132,7 @@ class IntentDetector:
         term_matches = sum(1 for pattern in self.term_patterns if pattern.search(query_lower))
         procedure_matches = sum(1 for pattern in self.procedure_patterns if pattern.search(query_lower))
         ambiguous_matches = sum(1 for pattern in self.ambiguous_patterns if pattern.search(query_lower))
+        template_matches = sum(1 for pattern in self.template_patterns if pattern.search(query_lower))
         
         # Metadata để debug
         metadata = {
@@ -130,12 +140,17 @@ class IntentDetector:
             "form_matches": form_matches,
             "term_matches": term_matches,
             "procedure_matches": procedure_matches,
+            "template_matches": template_matches,
             "ambiguous_matches": ambiguous_matches,
             "detected_keywords": self._extract_detected_keywords(query_lower)
         }
         
-        # Logic phân loại
-        if law_matches > 0 and form_matches == 0 and term_matches == 0:
+        # Logic phân loại - ưu tiên TEMPLATE khi có template keywords
+        if template_matches > 0:
+            # Ưu tiên TEMPLATE nếu có template keywords
+            intent = IntentType.TEMPLATE
+            confidence = "high" if template_matches >= 2 else "medium"
+        elif law_matches > 0 and form_matches == 0 and term_matches == 0:
             intent = IntentType.LAW
             confidence = "high" if law_matches >= 2 else "medium"
         elif form_matches > 0 and law_matches == 0 and term_matches == 0:
@@ -170,7 +185,7 @@ class IntentDetector:
         metadata["confidence"] = confidence
         metadata["intent"] = intent.value
         
-        logger.info(f"Intent Detection: {intent.value} (confidence: {confidence}) - Law: {law_matches}, Form: {form_matches}, Term: {term_matches}, Procedure: {procedure_matches}, Ambiguous: {ambiguous_matches}")
+        logger.info(f"Intent Detection: {intent.value} (confidence: {confidence}) - Law: {law_matches}, Form: {form_matches}, Term: {term_matches}, Procedure: {procedure_matches}, Template: {template_matches}, Ambiguous: {ambiguous_matches}")
         
         return intent, metadata
     
@@ -181,7 +196,8 @@ class IntentDetector:
             "form": [],
             "term": [],
             "procedure": [],
-            "ambiguous": []
+            "ambiguous": [],
+            "template": []
         }
         
         for pattern in self.law_patterns:
@@ -204,6 +220,10 @@ class IntentDetector:
             if pattern.search(query_lower):
                 detected["ambiguous"].append(pattern.pattern.replace(r'\b', ''))
         
+        for pattern in self.template_patterns:
+            if pattern.search(query_lower):
+                detected["template"].append(pattern.pattern.replace(r'\b', ''))
+        
         return detected
     
     def get_search_collections(self, intent: IntentType, confidence: str) -> List[str]:
@@ -225,14 +245,16 @@ class IntentDetector:
             return ["term_chunks"]
         elif intent == IntentType.PROCEDURE:
             return ["procedure_chunks"]
+        elif intent == IntentType.TEMPLATE:
+            return ["template_chunks"]
         elif intent == IntentType.AMBIGUOUS:
             # Search cả hai, ưu tiên theo confidence
             if confidence == "low":
-                return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]  # Cả bốn với ưu tiên ngang nhau
+                return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks", "template_chunks"]  # Cả bốn với ưu tiên ngang nhau
             else:
-                return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]  # Cả bốn
+                return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks", "template_chunks"]  # Cả bốn
         else:  # UNKNOWN
-            return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]  # Search tất cả
+            return ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks", "template_chunks"]  # Search tất cả
     
     def get_search_weights(self, intent: IntentType, confidence: str) -> Dict[str, float]:
         """
@@ -246,20 +268,22 @@ class IntentDetector:
             Dict[str, float]: Trọng số cho từng collection
         """
         if intent == IntentType.LAW:
-            return {"legal_chunks": 1.0, "form_chunks": 0.0, "term_chunks": 0.0, "procedure_chunks": 0.0}
+            return {"legal_chunks": 1.0, "form_chunks": 0.0, "term_chunks": 0.0, "procedure_chunks": 0.0, "template_chunks": 0.0}
         elif intent == IntentType.FORM:
-            return {"legal_chunks": 0.0, "form_chunks": 1.0, "term_chunks": 0.0, "procedure_chunks": 0.0}
+            return {"legal_chunks": 0.0, "form_chunks": 1.0, "term_chunks": 0.0, "procedure_chunks": 0.0, "template_chunks": 0.0}
         elif intent == IntentType.TERM:
-            return {"legal_chunks": 0.0, "form_chunks": 0.0, "term_chunks": 1.0, "procedure_chunks": 0.0}
+            return {"legal_chunks": 0.0, "form_chunks": 0.0, "term_chunks": 1.0, "procedure_chunks": 0.0, "template_chunks": 0.0}
         elif intent == IntentType.PROCEDURE:
-            return {"legal_chunks": 0.0, "form_chunks": 0.0, "term_chunks": 0.0, "procedure_chunks": 1.0}
+            return {"legal_chunks": 0.0, "form_chunks": 0.0, "term_chunks": 0.0, "procedure_chunks": 1.0, "template_chunks": 0.0}
+        elif intent == IntentType.TEMPLATE:
+            return {"legal_chunks": 0.0, "form_chunks": 0.0, "term_chunks": 0.0, "procedure_chunks": 0.0, "template_chunks": 1.0}
         elif intent == IntentType.AMBIGUOUS:
             if confidence == "low":
-                return {"legal_chunks": 0.25, "form_chunks": 0.25, "term_chunks": 0.25, "procedure_chunks": 0.25}  # Ngang nhau
+                return {"legal_chunks": 0.2, "form_chunks": 0.2, "term_chunks": 0.2, "procedure_chunks": 0.2, "template_chunks": 0.2}  # Ngang nhau
             else:
-                return {"legal_chunks": 0.33, "form_chunks": 0.33, "term_chunks": 0.33, "procedure_chunks": 0.0}  # Ưu tiên law
+                return {"legal_chunks": 0.2, "form_chunks": 0.2, "term_chunks": 0.2, "procedure_chunks": 0.2, "template_chunks": 0.2}  # Ưu tiên law
         else:  # UNKNOWN
-            return {"legal_chunks": 0.4, "form_chunks": 0.3, "term_chunks": 0.3, "procedure_chunks": 0.0}  # Cân bằng
+            return {"legal_chunks": 0.2, "form_chunks": 0.2, "term_chunks": 0.2, "procedure_chunks": 0.2, "template_chunks": 0.2}  # Cân bằng
     
     def format_context_by_intent(self, chunks: List[Dict], intent: IntentType) -> str:
         """
@@ -278,6 +302,7 @@ class IntentDetector:
             IntentType.FORM: CategoryType.FORM,
             IntentType.TERM: CategoryType.TERM,
             IntentType.PROCEDURE: CategoryType.PROCEDURE,
+            IntentType.TEMPLATE: CategoryType.TEMPLATE,
             IntentType.AMBIGUOUS: CategoryType.GENERAL,
             IntentType.UNKNOWN: CategoryType.GENERAL
         }
@@ -301,6 +326,7 @@ class IntentDetector:
             IntentType.FORM: CategoryType.FORM,
             IntentType.TERM: CategoryType.TERM,
             IntentType.PROCEDURE: CategoryType.PROCEDURE,
+            IntentType.TEMPLATE: CategoryType.TEMPLATE,
             IntentType.AMBIGUOUS: CategoryType.GENERAL,
             IntentType.UNKNOWN: CategoryType.GENERAL
         }

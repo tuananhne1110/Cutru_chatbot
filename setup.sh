@@ -38,18 +38,20 @@ cd ..
 if [ ! -f .env ]; then
     echo "🔧 Tạo file .env..."
     cat > .env << EOF
-# Chutes.ai API Key
-CHUTES_API_KEY=your-chutes-api-key-here
+# AWS Credentials for Bedrock
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+AWS_DEFAULT_REGION=us-east-1
 
 # Supabase Configuration
-SUPABASE_URL=https://rjrqtogyzmgyqvryxfyk.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqcnF0b2d5em1neXF2cnl4ZnlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MDcyNTcsImV4cCI6MjA2NjQ4MzI1N30.QjnPfVS7NbMTqe4z80X6q2MVA0z3iM3xsLzB71uEDNQ
+SUPABASE_URL=your-supabase-url-here
+SUPABASE_KEY=your-supabase-key-here
 
 # QDrant Configuration
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 EOF
-    echo "⚠️ Vui lòng cập nhật CHUTES_API_KEY trong file .env"
+    echo "⚠️ Vui lòng cập nhật AWS credentials trong file .env"
 fi
 
 # Setup Supabase tables
@@ -89,7 +91,7 @@ echo "✅ Setup hoàn tất!"
 echo ""
 echo "📋 Bước tiếp theo:"
 echo "1. Đặt file .docx vào thư mục laws/"
-echo "2. Cập nhật CHUTES_API_KEY trong file .env"
+echo "2. Cập nhật AWS credentials trong file .env"
 echo "3. Chạy: python chunking.py"
 echo "4. Chạy: python embed_qdrant.py"
 echo "5. Chạy backend: python api.py"

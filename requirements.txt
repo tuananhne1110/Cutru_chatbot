@@ -11,3 +11,7 @@ supabase
 flagembedding
 torch
 transformers
+generativeai
+boto3
+botocore
+python-dotenv

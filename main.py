@@ -1,5 +1,11 @@
 import logging
 logging.basicConfig(level=logging.INFO)
+# Giảm log spam cho các module phụ
+logging.getLogger("agents.context_manager").setLevel(logging.WARNING)
+logging.getLogger("agents.prompt_manager").setLevel(logging.WARNING)
+logging.getLogger("agents.prompt_templates").setLevel(logging.WARNING)
+logging.getLogger("services.qdrant_service").setLevel(logging.WARNING)
+logging.getLogger("services.reranker_service").setLevel(logging.WARNING)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import health

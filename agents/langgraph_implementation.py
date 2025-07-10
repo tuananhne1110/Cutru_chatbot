@@ -9,6 +9,8 @@ import logging
 import time
 from langchain_core.runnables import RunnableConfig
 from typing import cast
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Import existing components
 from agents.intent_detector import intent_detector, IntentType
@@ -64,8 +66,9 @@ class RAGNodes:
         self.context_manager = context_manager
         self.prompt_manager = prompt_manager
         self.guardrails = Guardrails()
+        self._executor = ThreadPoolExecutor()
         
-    def set_intent(self, state: ChatState) -> ChatState:
+    async def set_intent(self, state: ChatState) -> ChatState:
         question = state["question"]
         intent, metadata = self.intent_detector.detect_intent(question)
         state["intent"] = intent
@@ -85,7 +88,7 @@ class RAGNodes:
         else:
             return "general_search"
     
-    def rewrite_query_with_context(self, state: ChatState) -> ChatState:
+    async def rewrite_query_with_context(self, state: ChatState) -> ChatState:
         """Rewrite query với conversation context"""
         start_time = time.time()
         question = state["question"]
@@ -98,8 +101,9 @@ class RAGNodes:
                 messages_dict.append({'role': role, 'content': m.content})
             elif isinstance(m, dict):
                 messages_dict.append(m)
-        context_string, _ = self.context_manager.process_conversation_history(messages_dict, question)
-        rewritten = self.query_rewriter.rewrite_with_context(question, context_string)
+        loop = asyncio.get_running_loop()
+        context_string, _ = await loop.run_in_executor(self._executor, self.context_manager.process_conversation_history, messages_dict, question)
+        rewritten = await loop.run_in_executor(self._executor, self.query_rewriter.rewrite_with_context, question, context_string)
         state["rewritten_query"] = rewritten
         duration = time.time() - start_time
         state["processing_time"]["query_rewriting"] = duration
@@ -107,91 +111,102 @@ class RAGNodes:
         logger.info(f"[LangGraph] Query: {question} -> {rewritten}")
         return state
     
-    def retrieve_context(self, state: ChatState) -> ChatState:
+    async def retrieve_context(self, state: ChatState) -> ChatState:
         """Retrieve context documents"""
         start_time = time.time()
         query = state.get("rewritten_query") or state["question"] or ""
         intent = state["intent"]
         confidence = state["confidence"] if state["confidence"] is not None else 0.0
-        # Ensure intent is not None and confidence is str if required
         if intent is None:
             raise ValueError("Intent must not be None in retrieve_context")
-        # If get_search_collections expects str for confidence, convert
         collections = intent_detector.get_search_collections(intent, str(confidence))
-        logger.info(f"[Retrieval] Query: {query}")
-        logger.info(f"[Retrieval] Intent: {intent}, Collections: {collections}")
-        embedding = get_embedding(query)
-        logger.info(f"[Retrieval] Embedding (first 5): {embedding[:5]}... (dim={len(embedding)})")
+        # Ẩn toàn bộ log retrieval
+        loop = asyncio.get_running_loop()
+        embedding = await loop.run_in_executor(self._executor, get_embedding, query)
         all_docs = []
         for collection in collections:
-
-            # nâng cấp ở đây
-            # dung them query
-            # collection_name, query_embedding, query, limit=5
-
-            results, filter_condition = search_qdrant(collection_name= collection, query_embedding= embedding, query = query, limit=15)
-            # print(type(results))
-            logger.info(f"[Retrieval] results: {results})")
-            
-            logger.info(f"[Retrieval] filter_condition: {filter_condition})")
-
-            logger.info(f"[Retrieval] Collection: {collection}, Results: {len(results)}")
-
-            # kết thúc ở đây
-
+            # TODO: Nếu search_qdrant có async, chuyển sang await
+            results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 15)
             docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
             all_docs.extend(docs)
-        logger.info(f"[Retrieval] Total docs before rerank: {len(all_docs)}")
         if all_docs:
             reranker = get_reranker()
-            reranked_docs = reranker.rerank(
-                query=query or "",
-                documents=[{"content": doc.page_content} for doc in all_docs],
-                top_k=15
-            )
-            
-            logger.info(f"[Retrieval] Docs after rerank: {len(reranked_docs)}")
+            reranked_docs = await loop.run_in_executor(self._executor, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 15)
             for i, doc in enumerate(all_docs[:len(reranked_docs)]):
                 doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
-
-            # Log chi tiết top 3 tài liệu
-            for idx, doc in enumerate(all_docs[:3]):
-                meta = doc.metadata
-                logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
-        
+            # for idx, doc in enumerate(all_docs[:3]):
+            #     meta = doc.metadata
+            #     logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
         state["context_docs"] = all_docs[:15]
         duration = time.time() - start_time
         state["processing_time"]["context_retrieval"] = duration
-        logger.info(f"[LangGraph] Context retrieval: {duration:.4f}s - {len(all_docs)} docs")
         return state
     
-    def generate_answer(self, state: ChatState) -> ChatState:
-        """Generate answer với context (chỉ tạo prompt, không gọi LLM ở đây)"""
+    async def generate_answer(self, state: ChatState) -> ChatState:
+        """Generate answer với context"""
         start_time = time.time()
         question = state["question"]
         docs = state["context_docs"]
         intent = state["intent"]
-        # create_dynamic_prompt expects IntentType
-        prompt = self.prompt_manager.create_dynamic_prompt(
-            question=question,
-            chunks=[doc.metadata for doc in docs],
-            intent=intent
-        )
-
-        logger.info("###"+ "_"*20 + "###")
-        logger.info(f"[Retrieval] finaly prompt: {prompt})")
-        logger.info("###"+ "_"*20 + "###")
-
-
+        
+        # Tạo prompt
+        loop = asyncio.get_running_loop()
+        logger.info(f"[LangGraph] Sắp tạo prompt với prompt_manager...")
+        logger.info(f"[LangGraph] DEBUG: Sắp tạo prompt với question: {question}, số docs: {len(docs)}, intent: {intent}")
+        for i, doc in enumerate(docs[:3]):
+            logger.info(f"[LangGraph] DEBUG: Doc {i}: {doc.metadata}")
+        prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs], intent)
+        logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt[:500]: {prompt[:500]}")
         state["prompt"] = prompt  # Store prompt for streaming
-        state["answer"] = None
-        state["sources"] = []
+        
+        # Gọi LLM để sinh câu trả lời (sử dụng Llama làm mặc định)
+        try:
+            logger.info(f"[LangGraph] Sắp gọi call_llm_full với prompt[:100]: {prompt[:100]}")
+            answer = await loop.run_in_executor(self._executor, call_llm_full, prompt, "llama")
+            logger.info(f"[LangGraph] Đã gọi xong call_llm_full, answer[:100]: {str(answer)[:100]}")
+            state["answer"] = answer
+        except Exception as e:
+            logger.error(f"Error calling LLM: {e}")
+            state["answer"] = "Xin lỗi, có lỗi xảy ra khi xử lý câu hỏi của bạn."
+            state["error"] = "llm_error"
+        
+        # Tạo sources từ docs
+        sources = []
+        for doc in docs[:3]:  # Top 3 sources
+            file_url = doc.metadata.get("file_url", "")
+            url = doc.metadata.get("url", "")
+            code = doc.metadata.get("code", "")
+            title = doc.metadata.get("name", doc.metadata.get("form_name", doc.metadata.get("procedure_name", "N/A")))
+            # Nếu có file_url, luôn thêm vào sources
+            if file_url:
+                source = {
+                    "title": title,
+                    "code": code,
+                    "file_url": file_url,
+                    "url": url,
+                    "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                    "metadata": doc.metadata
+                }
+                sources.append(source)
+            else:
+                # fallback: vẫn thêm các nguồn khác nếu không có file_url
+                source = {
+                    "title": title,
+                    "code": code,
+                    "file_url": file_url,
+                    "url": url,
+                    "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                    "metadata": doc.metadata
+                }
+                sources.append(source)
+        state["sources"] = sources
+        
         duration = time.time() - start_time
         state["processing_time"]["answer_generation"] = duration
-        logger.info(f"[LangGraph] Answer prompt generated: {duration:.4f}s")
+        logger.info(f"[LangGraph] Answer generation: {duration:.4f}s")
         return state
     
-    def validate_output(self, state: ChatState) -> ChatState:
+    async def validate_output(self, state: ChatState) -> ChatState:
         """Validate output với guardrails"""
         start_time = time.time()
         
@@ -212,7 +227,7 @@ class RAGNodes:
         
         return state
     
-    def update_memory(self, state: ChatState) -> ChatState:
+    async def update_memory(self, state: ChatState) -> ChatState:
         """Update conversation memory"""
         start_time = time.time()
         session_id = state["session_id"]
@@ -227,7 +242,8 @@ class RAGNodes:
                 messages_dict.append({'role': role, 'content': m.content})
             elif isinstance(m, dict):
                 messages_dict.append(m)
-        _, processed_turns = self.context_manager.process_conversation_history(messages_dict, state["question"])
+        loop = asyncio.get_running_loop()
+        _, processed_turns = await loop.run_in_executor(self._executor, self.context_manager.process_conversation_history, messages_dict, state["question"])
         context_summary = None
         if processed_turns:
             context_summary = " | ".join([t.content for t in processed_turns])
@@ -239,20 +255,21 @@ class RAGNodes:
         logger.info(f"[LangGraph] Memory update: {duration:.4f}s")
         return state
 
-    def semantic_cache(self, state: ChatState) -> ChatState:
+    async def semantic_cache(self, state: ChatState) -> ChatState:
         """Kiểm tra semantic cache (nếu có)"""
         from services.embedding import get_embedding
         from services.cache_service import get_semantic_cached_result
         query = state["question"]
-        embedding = get_embedding(query)
-        cached = get_semantic_cached_result(embedding)
+        loop = asyncio.get_running_loop()
+        embedding = await loop.run_in_executor(self._executor, get_embedding, query)
+        cached = await loop.run_in_executor(self._executor, get_semantic_cached_result, embedding)
         if cached:
             state["answer"] = cached.get("answer", "")
             state["sources"] = cached.get("sources", [])
             state["error"] = None
             # Nếu hit cache, có thể set flag để dừng sớm nếu muốn
         return state
-    def guardrails_input(self, state: ChatState) -> ChatState:
+    async def guardrails_input(self, state: ChatState) -> ChatState:
         """Kiểm tra an toàn đầu vào (LlamaGuard Input)"""
         from agents.guardrails import Guardrails
         guardrails = Guardrails()
@@ -399,8 +416,8 @@ def create_initial_state(question: str, messages: List[Dict], session_id: str) -
     }  # type: ignore
 
 def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract kết quả từ state"""
-    return {
+    """Extract kết quả từ state và in log thời gian xử lý từng bước"""
+    result = {
         "answer": state.get("answer", ""),
         "sources": state.get("sources", []),
         "intent": state.get("intent"),
@@ -408,6 +425,11 @@ def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "processing_time": state.get("processing_time", {}),
         "error": state.get("error")
     }
+    # In log thời gian xử lý từng bước
+    print("=== Thời gian xử lý từng bước ===")
+    for step, t in result["processing_time"].items():
+        print(f"{step}: {t:.4f} giây")
+    return result
 
 # ============================================================================
 # EXAMPLE USAGE

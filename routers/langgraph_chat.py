@@ -65,15 +65,15 @@ async def langgraph_chat_stream(request: ChatRequest):
         def stream_llm():
             # Yield một chuỗi dummy lớn để phá buffer
             yield " " * 2048 + "\n"
-            buffer = ""
-            for chunk in call_llm_stream(prompt):
-                buffer += chunk
-                if "\n" in buffer or len(buffer) > 50:
-                    yield buffer
-                    buffer = ""
-            if buffer:
-                yield buffer
-        return StreamingResponse(stream_llm(), media_type="text/plain")
+            for chunk in call_llm_stream(prompt, model="llama"):
+                if chunk:
+                    logger.info(f"[stream_llm] Yield chunk: {repr(chunk[:100])}")
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+            # Gửi sources cho frontend
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+            # Gửi chunk done để báo hiệu kết thúc
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return StreamingResponse(stream_llm(), media_type="text/event-stream")
     except Exception as e:
         logger.error(f"Exception in /chat/stream endpoint: {e}")
         def error_stream(e=e):

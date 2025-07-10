@@ -12,13 +12,15 @@ json_files = [
     'chunking/output_json/form_chunks.json',
     'chunking/output_json/all_laws.json',
     'chunking/output_json/term_chunks.json',
-    'chunking/output_json/procedure_chunks.json'
+    'chunking/output_json/procedure_chunks.json',
+    'chunking/output_json/template_chunks.json'  # Thêm file template
 ]
 
 form_chunks = []
 law_chunks = []
 term_chunks = []
 procedure_chunks = []
+template_chunks = []  # Thêm biến này
 
 for json_file in json_files:
     try:
@@ -34,6 +36,8 @@ for json_file in json_files:
                 term_chunks.append(chunk)
             elif 'procedure_code' in chunk or 'procedure_name' in chunk or chunk.get('category') == 'procedure':
                 procedure_chunks.append(chunk)
+            elif 'category' in chunk and chunk.get('category') == 'templates':
+                template_chunks.append(chunk)
             else:
                 law_chunks.append(chunk)
                 
@@ -46,7 +50,7 @@ print(f"Form chunks: {len(form_chunks)}")
 print(f"Law chunks: {len(law_chunks)}")
 print(f"Term chunks: {len(term_chunks)}")
 print(f"Procedure chunks: {len(procedure_chunks)}")
-
+print(f"Template chunks: {len(template_chunks)}")
 # 2. Sử dụng model embedding từ app_config
 model = embedding_model
 
@@ -128,6 +132,15 @@ def create_collection_with_schema(client, collection_name, vector_size, schema_t
             "total_chunks": PayloadSchemaType.INTEGER,
             "content": PayloadSchemaType.TEXT
         }
+    elif schema_type == "template":
+        payload_schema = {
+            "code": PayloadSchemaType.KEYWORD,
+            "name": PayloadSchemaType.TEXT,
+            "description": PayloadSchemaType.TEXT,
+            "file_url": PayloadSchemaType.TEXT,
+            "procedures": PayloadSchemaType.TEXT,
+            "category": PayloadSchemaType.KEYWORD
+        }
     else:
         payload_schema = {}
     
@@ -202,6 +215,18 @@ def prepare_text_for_embedding(chunk):
     # Add implementation result for procedures
     if chunk.get("implementation_result"):
         parts.append(f"Result: {chunk.get('implementation_result')}")
+    
+    # Add template information if exists
+    if 'code' in chunk:
+        parts.append(f"Template Code: {chunk.get('code', '')}")
+    if 'name' in chunk:
+        parts.append(f"Template Name: {chunk.get('name', '')}")
+    if chunk.get('description'):
+        parts.append(f"Description: {chunk.get('description')}")
+    if chunk.get('procedures'):
+        parts.append(f"Procedures: {chunk.get('procedures')}")
+    if chunk.get('file_url'):
+        parts.append(f"File URL: {chunk.get('file_url')}")
     
     return " | ".join(parts)
 
@@ -461,12 +486,73 @@ if procedure_chunks:
     
     print(f"Procedure collection total points: {client.count(collection_name=collection_name).count}")
 
+# 8.5. Process template chunks
+if template_chunks:
+    print("\n" + "="*50)
+    print("PROCESSING TEMPLATE CHUNKS")
+    print("="*50)
+    
+    template_texts = [prepare_text_for_embedding(chunk) for chunk in template_chunks]
+    template_embeddings = model.encode(template_texts, show_progress_bar=True, batch_size=32)
+    
+    # Clean metadata for template chunks
+    template_metadatas = []
+    for chunk in template_chunks:
+        cleaned = {}
+        for k, v in chunk.items():
+            if k != 'content':
+                if v is None:
+                    cleaned[k] = ""
+                else:
+                    cleaned[k] = str(v)
+        template_metadatas.append(cleaned)
+    
+    # Create template_chunks collection with payload schema
+    collection_name = "template_chunks"
+    vector_size = len(template_embeddings[0])
+    create_collection_with_schema(client, collection_name, vector_size, "template")
+    
+    # Add template data to QDrant
+    print(f"Adding {len(template_chunks)} template documents to QDrant...")
+    
+    try:
+        current_count = client.count(collection_name=collection_name).count
+        start_id = current_count
+        print(f"Starting from ID: {start_id}")
+    except:
+        start_id = 0
+        print("Starting from ID: 0")
+    
+    template_points = []
+    for i, (text, embedding, metadata) in enumerate(zip(template_texts, template_embeddings, template_metadatas)):
+        point = PointStruct(
+            id=start_id + i,
+            vector=embedding.tolist(),
+            payload={
+                "text": text,
+                **metadata
+            }
+        )
+        template_points.append(point)
+    
+    # Add template points in batches
+    batch_size = 100
+    for i in range(0, len(template_points), batch_size):
+        batch = template_points[i:i + batch_size]
+        client.upsert(
+            collection_name=collection_name,
+            points=batch
+        )
+        print(f"Added template batch {i//batch_size + 1}/{(len(template_points) + batch_size - 1)//batch_size}")
+    
+    print(f"Template collection total points: {client.count(collection_name=collection_name).count}")
+
 # 9. Kiểm tra kết quả
 print("\n" + "="*50)
 print("COLLECTION SUMMARY")
 print("="*50)
 
-collections = ["form_chunks", "legal_chunks", "term_chunks", "procedure_chunks"]
+collections = ["form_chunks", "legal_chunks", "term_chunks", "procedure_chunks", "template_chunks"]
 for collection_name in collections:
     try:
         collection_info = client.get_collection(collection_name)
@@ -532,6 +618,11 @@ for query, collection_name in test_queries:
                 print(f"  Code: {result.payload.get('procedure_code', 'N/A')}")
                 print(f"  Level: {result.payload.get('implementation_level', 'N/A')}")
                 print(f"  Field: {result.payload.get('field', 'N/A')}")
+            elif collection_name == "template_chunks":
+                print(f"  Code: {result.payload.get('code', 'N/A')}")
+                print(f"  Name: {result.payload.get('name', 'N/A')}")
+                print(f"  Description: {result.payload.get('description', 'N/A')}")
+                print(f"  Procedures: {result.payload.get('procedures', 'N/A')}")
             else:
                 print(f"  Law Name: {result.payload.get('law_name', 'N/A')}")
                 print(f"  Article: {result.payload.get('article', 'N/A')}")

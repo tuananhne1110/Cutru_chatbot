@@ -147,11 +147,34 @@ Lưu ý đặc biệt:
 - Hỗ trợ tìm kiếm các thuật ngữ liên quan đến: cư trú, đăng ký, hành chính, pháp lý.
 - Có thể kết hợp tìm kiếm cả thuật ngữ và nội dung định nghĩa.
 """
+
+FILTER_PROMPT_TEMPLATE = """
+Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm mẫu văn bản và template.
+
+Vui lòng tuân thủ các quy tắc sau:
+1. Truy vấn được đặt trong thẻ <query>...</query>.
+2. Danh sách các trường cho phép lọc sẽ được cung cấp trong thẻ <indexes>...</indexes>.
+3. Chỉ sử dụng các trường có trong <indexes>. Không tự tạo thêm trường mới.
+4. Chỉ sinh filter nếu bạn chắc chắn rằng ý định của người dùng tương ứng với tên trường và giá trị hợp lệ.
+5. Không nên suy đoán. Nếu không tìm được trường phù hợp, hãy trả về bộ lọc rỗng.
+6. Nếu người dùng đề cập đến điều gì đó cần loại trừ, hãy đưa vào mục `must_not`.
+7. Nếu truy vấn có chứa nhiều điều kiện, hãy kết hợp tất cả trong `must` (và `must_not` nếu có loại trừ).
+8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
+9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
+10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
+Giải thích các trường quan trọng:
+    - **code** (`KEYWORD`): Mã số mẫu văn bản. VD: `"CT01"`, `"TK02"`.
+    - **name** (`KEYWORD`): Tên đầy đủ của mẫu văn bản. VD: `"tờ khai thay đổi thông tin cư trú"`.
+    - **description** (`TEXT`): Mô tả chi tiết về mẫu văn bản.
+    - **procedures** (`TEXT`): Các thủ tục liên quan đến mẫu văn bản.
+    - **category** (`KEYWORD`): Danh mục tài liệu. VD: `"templates"`.
+"""
 # FORMATTED_INDEXES_
 FORMATTED_INDEXES_PROCEDURE = '- competent_authority - KEYWORD\n- decision_number - KEYWORD\n- implementing_agency - KEYWORD\n- application_receiving_address - KEYWORD\n- coordinating_agency - KEYWORD\n- implementation_subject - KEYWORD\n- implementation_result - KEYWORD\n- procedure_name - KEYWORD\n- category - KEYWORD\n- source_section - KEYWORD\n- procedure_code - KEYWORD\n- procedure_type - KEYWORD\n- field - KEYWORD\n- content_type - KEYWORD\n- table_title - KEYWORD\n- authorized_agency - KEYWORD\n- implementation_level - KEYWORD'
 FORMATTED_INDEXES_LEGAL= '- type - KEYWORD\n- point - KEYWORD\n- section - KEYWORD\n- law_name - KEYWORD\n- law_type - KEYWORD\n- promulgator - KEYWORD\n- category - KEYWORD\n- promulgation_date - KEYWORD\n- clause - KEYWORD\n- chapter - KEYWORD\n- law_ref - KEYWORD\n- article - KEYWORD\n- parent_id - KEYWORD\n- effective_date - KEYWORD\n- id - KEYWORD\n- law_code - KEYWORD\n- parent_type - KEYWORD'
 FORMATTED_INDEXES_FROM = '- form_code - KEYWORD\n- field_name - KEYWORD\n- chunk_type - KEYWORD\n- form_name - KEYWORD\n- category - KEYWORD\n- field_no - KEYWORD'
 FORMATTED_INDEXES_TERM = '- content - TEXT\n- category - KEYWORD\n- term - KEYWORD'
+FORMATTED_INDEXES_TEMPLATE = '- code - KEYWORD\n- name - KEYWORD\n- description - TEXT\n- procedures - TEXT\n- category - KEYWORD'
 
 
 def automate_filtering(user_query, formatted_indexes, filter_prompt):
@@ -201,6 +224,9 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
     elif collection_name == "term_chunks":
         filter_prompt = FILTER_PROMPT_TERM
         formatted_indexes = FORMATTED_INDEXES_TERM
+    elif collection_name == "template_chunks":
+        filter_prompt = FILTER_PROMPT_TEMPLATE
+        formatted_indexes = FORMATTED_INDEXES_TEMPLATE
     else :
         return qdrant_client.search(
             collection_name=collection_name,
@@ -211,7 +237,7 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
     filter_condition = automate_filtering(user_query = query, formatted_indexes= formatted_indexes, filter_prompt= filter_prompt)
     
     return qdrant_client.query_points(
-        collection_name="procedure_chunks",
+        collection_name=collection_name,
         query=query_embedding,
         query_filter = filter_condition,
         limit= limit,

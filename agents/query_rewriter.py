@@ -12,6 +12,9 @@ from services.llm_service import call_llm_full
 
 logger = logging.getLogger(__name__)
 
+# Khởi tạo paraphrase pipeline với BARTpho (singleton, chỉ load 1 lần)
+paraphrase_pipe = pipeline("text2text-generation", model="vinai/bartpho-syllable")
+
 # Các cụm từ mở đầu/ngữ cảnh không cần thiết
 UNNECESSARY_PHRASES = [
     r"mình muốn hỏi",
@@ -50,8 +53,7 @@ MAX_STOPWORD = 10
 class QueryRewriter:
     def __init__(self):
         self.correction_count = 0  # Đếm số lần sửa lỗi chính tả (nếu có)
-        # Khởi tạo paraphrase pipeline với BARTpho
-        self.paraphrase_pipe = pipeline("text2text-generation", model="vinai/bartpho-syllable")
+        self.paraphrase_pipe = paraphrase_pipe  # Dùng lại instance toàn cục
 
     def rule_based_clean(self, text: str) -> Tuple[str, dict]:
         info = {"removed_phrases": [], "corrections": 0}

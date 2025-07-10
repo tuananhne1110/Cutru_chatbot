@@ -44,6 +44,7 @@ class PromptManager:
                 IntentType.UNKNOWN: CategoryType.GENERAL,
                 IntentType.PROCEDURE: CategoryType.PROCEDURE,
                 IntentType.TERM: CategoryType.TERM,
+                IntentType.TEMPLATE: CategoryType.TEMPLATE,
             }
             category = intent_to_category.get(intent, CategoryType.GENERAL)
         
@@ -100,6 +101,7 @@ class PromptManager:
             CategoryType.LAW: [],
             CategoryType.FORM: [],
             CategoryType.PROCEDURE: [],
+            CategoryType.TEMPLATE: [],
             CategoryType.GENERAL: []
         }
         
@@ -113,6 +115,8 @@ class PromptManager:
                 categorized[CategoryType.FORM].append(chunk)
             elif "procedure" in chunk_category.lower() or "procedure" in chunk_type.lower():
                 categorized[CategoryType.PROCEDURE].append(chunk)
+            elif chunk_category == "template" or chunk_type == "template":
+                categorized[CategoryType.TEMPLATE].append(chunk)
             else:
                 categorized[CategoryType.GENERAL].append(chunk)
         
@@ -156,6 +160,9 @@ THÔNG TIN THAM KHẢO:"""
                 context_parts.append(self.prompt_templates.format_context_by_category(chunks, category))
             elif category == CategoryType.PROCEDURE:
                 context_parts.append("\n--- THỦ TỤC HÀNH CHÍNH ---")
+                context_parts.append(self.prompt_templates.format_context_by_category(chunks, category))
+            elif category == CategoryType.TEMPLATE:
+                context_parts.append("\n--- MẪU VĂN BẢN ---")
                 context_parts.append(self.prompt_templates.format_context_by_category(chunks, category))
             else:
                 context_parts.append("\n--- THÔNG TIN KHÁC ---")

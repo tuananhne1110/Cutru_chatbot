@@ -10,6 +10,7 @@ class CategoryType(Enum):
     FORM = "form"         # Hướng dẫn biểu mẫu
     TERM = "term"         # Thuật ngữ, định nghĩa
     PROCEDURE = "procedure"  # Thủ tục hành chính
+    TEMPLATE = "template"     # Biểu mẫu gốc (template)
     GENERAL = "general"   # Thông tin chung
 
 class PromptTemplates:
@@ -21,6 +22,7 @@ class PromptTemplates:
             CategoryType.FORM: self._get_form_prompt(),
             CategoryType.TERM: self._get_term_prompt(),
             CategoryType.PROCEDURE: self._get_procedure_prompt(),
+            CategoryType.TEMPLATE: self._get_template_prompt(),
             CategoryType.GENERAL: self._get_general_prompt()
         }
     
@@ -176,6 +178,9 @@ LƯU Ý:
 
 TRẢ LỜI:"""
 
+    def _get_template_prompt(self) -> str:
+        return """Bạn là trợ lý pháp lý chuyên về biểu mẫu gốc và tài liệu hành chính.\n- Hỗ trợ người dùng tìm, giải thích các biểu mẫu gốc (template).\n- Đưa ra hướng dẫn sử dụng, các thủ tục liên quan.\n- Không chèn link tải file vào nội dung trả lời. Nếu có file_url, frontend sẽ tự hiển thị nút tải về.\n\nTHÔNG TIN BIỂU MẪU:\n{context}\n\nCÂU HỎI: {question}\n\nHƯỚNG DẪN:\n1. Giải thích ngắn gọn mục đích sử dụng biểu mẫu.\n2. Liệt kê các thủ tục liên quan (nếu có).\n3. Nếu không tìm thấy, hướng dẫn cách liên hệ cơ quan chức năng.\n\nTRẢ LỜI:"""
+
     def get_prompt_by_category(self, category: CategoryType) -> str:
         """
         Lấy prompt template theo category
@@ -206,7 +211,8 @@ TRẢ LỜI:"""
             CategoryType.LAW: 0,
             CategoryType.FORM: 0,
             CategoryType.TERM: 0,
-            CategoryType.PROCEDURE: 0
+            CategoryType.PROCEDURE: 0,
+            CategoryType.TEMPLATE: 0
         }
         
         for chunk in chunks:
@@ -221,6 +227,8 @@ TRẢ LỜI:"""
                 category_counts[CategoryType.TERM] += 1
             elif "procedure" in chunk_category.lower() or "procedure" in chunk_type.lower():
                 category_counts[CategoryType.PROCEDURE] += 1
+            elif chunk_category == "templates" or chunk_type == "templates":
+                category_counts[CategoryType.TEMPLATE] += 1
         
         # Xác định category có số lượng chunks cao nhất
         dominant_category = max(category_counts.items(), key=lambda x: x[1])
@@ -331,8 +339,15 @@ TRẢ LỜI:"""
                 for k , value in chunk.items():
                     logger.info(f"key : {k} \nValue : {value}")
 
-
-                
+            elif category == CategoryType.TEMPLATE:
+                code = chunk.get("code", "")
+                name = chunk.get("name", "")
+                description = chunk.get("description", "")
+                file_url = chunk.get("file_url", "")
+                procedures = chunk.get("procedures", "")
+                context_parts.append(
+                    f"[{code}] {name}\nMô tả: {description}\nThủ tục liên quan: {procedures}\nFile: {file_url}"
+                )
                 
             else:
                 # Format chung

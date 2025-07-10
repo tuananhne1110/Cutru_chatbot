@@ -191,11 +191,7 @@ class BGEReranker:
         }
 
 # Global instance
-bge_reranker = None
-
+# Khởi tạo singleton ngay khi import
+bge_reranker = BGEReranker()
 def get_reranker() -> BGEReranker:
-    """Get global BGE reranker instance"""
-    global bge_reranker
-    if bge_reranker is None:
-        bge_reranker = BGEReranker()
     return bge_reranker 

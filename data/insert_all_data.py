@@ -242,6 +242,54 @@ def insert_procedures_data():
         print(f"Lỗi khi import procedures: {e}")
         return 0
 
+def insert_templates_data():
+    """Insert dữ liệu templates từ template_chunks.json"""
+    print("Bắt đầu import dữ liệu templates...")
+
+    try:
+        with open("chunking/output_json/template_chunks.json", encoding="utf-8") as f:
+            data = json.load(f)
+
+        print(f"Đang import {len(data)} template records vào Supabase...")
+
+        for i, chunk in enumerate(data):
+            try:
+                # Nếu procedures là list, chuyển thành chuỗi phân cách bởi dấu phẩy
+                procedures = chunk.get("procedures", [])
+                if isinstance(procedures, list):
+                    procedures_str = ", ".join(procedures)
+                else:
+                    procedures_str = str(procedures) if procedures else None
+
+                template_data = {
+                    "code": chunk.get("code"),
+                    "name": chunk.get("name"),
+                    "description": chunk.get("description"),
+                    "file_url": chunk.get("file_url"),
+                    "procedures": procedures_str,
+                    "category": chunk.get("category", "templates"),
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+
+                supabase.table("templates").insert(template_data).execute()
+
+                if (i + 1) % 10 == 0:
+                    print(f"Đã import {i + 1}/{len(data)} template records")
+
+            except Exception as e:
+                print(f"Lỗi khi import template record {i}: {e}")
+
+        print("Hoàn thành import dữ liệu templates!")
+        return len(data)
+
+    except FileNotFoundError:
+        print("File template_chunks.json không tồn tại, bỏ qua import templates")
+        return 0
+    except Exception as e:
+        print(f"Lỗi khi import templates: {e}")
+        return 0
+
 def get_database_stats():
     """Lấy thống kê từ database"""
     print("\nTHỐNG KÊ DATABASE")
@@ -268,6 +316,11 @@ def get_database_stats():
         procedures_count = len(result.data) if result.data else 0
         print(f"Tổng số procedures records: {procedures_count}")
         
+        # Thống kê templates
+        result = supabase.table("templates").select("id").execute()
+        templates_count = len(result.data) if result.data else 0
+        print(f"Tổng số templates records: {templates_count}")
+        
         # Thống kê theo category
         if laws_count > 0:
             result = supabase.table("laws").select("category").execute()
@@ -292,6 +345,12 @@ def get_database_stats():
             categories = [row['category'] for row in result.data if row.get('category')]
             procedure_categories = categories.count('procedure')
             print(f"   - Procedure records: {procedure_categories}")
+        
+        if templates_count > 0:
+            result = supabase.table("templates").select("category").execute()
+            categories = [row['category'] for row in result.data if row.get('category')]
+            template_categories = categories.count('templates')
+            print(f"   - Template records: {template_categories}")
         
         # Thống kê form codes
         result = supabase.table("form_guidance").select("form_code").execute()
@@ -374,6 +433,11 @@ def main():
     # Import procedures data
     procedures_count = insert_procedures_data()
     
+    print("\n" + "-"*60)
+    
+    # Import templates data
+    templates_count = insert_templates_data()
+    
     print("\n" + "="*60)
     print("HOÀN THÀNH IMPORT TẤT CẢ DỮ LIỆU!")
     print(f"Tổng kết:")
@@ -381,7 +445,8 @@ def main():
     print(f"   - Form chunks imported: {forms_count}")
     print(f"   - Terms imported: {terms_count}")
     print(f"   - Procedures imported: {procedures_count}")
-    print(f"   - Total records: {laws_count + forms_count + terms_count + procedures_count}")
+    print(f"   - Templates imported: {templates_count}")
+    print(f"   - Total records: {laws_count + forms_count + terms_count + procedures_count + templates_count}")
     
     # Hiển thị thống kê
     get_database_stats()
