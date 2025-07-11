@@ -20,14 +20,13 @@ except Exception as e:
     logger.error(f"Failed to initialize AWS Bedrock client: {e}")
     bedrock_client = None
 
-def call_llm_stream(prompt, model="claude", max_tokens=2000, temperature=0.3):
+def call_llm_stream(prompt, model="claude", max_tokens=4000, temperature=0.5):  
     """
     Stream response from AWS Bedrock
     """
     if not bedrock_client:
         yield "Xin lỗi, không thể kết nối đến AWS Bedrock. Vui lòng thử lại sau."
         return
-    
     try:
         # Create configuration based on model type
         if model.lower() == "claude":
@@ -35,48 +34,32 @@ def call_llm_stream(prompt, model="claude", max_tokens=2000, temperature=0.3):
                 max_tokens=max_tokens,
                 temperature=temperature
             )
+            message = bedrock_client.create_message("user", prompt)
+            response = bedrock_client.generate_message([message], config_overrides=config)
+            handler = ClaudeHandler(config)  # type: ignore
+            response_text = handler.extract_response_text(response)
+            chunk_size = 100
+            if not response_text:
+                yield "Xin lỗi, không có dữ liệu trả về từ LLM."
+                return
+            for i in range(0, len(response_text), chunk_size):
+                chunk = response_text[i:i + chunk_size]
+                yield chunk
         else:
+            # Llama: sử dụng streaming
             config = LlamaConfig(
                 model_id="us.meta.llama4-scout-17b-instruct-v1:0",
-                max_gen_len=max_tokens,
-                temperature=temperature
+                max_gen_len=max_tokens,  
+                temperature=temperature  
             )
-        
-        # Create message
-        message = bedrock_client.create_message("user", prompt)
-        logger.info(f"[call_llm_stream] Calling Bedrock model: {config.model_id}, prompt[:100]: {prompt[:100]}")
-        import time
-        t0 = time.time()
-        # Generate response
-        response = bedrock_client.generate_message([message], config_overrides=config)
-        logger.info(f"[call_llm_stream] Raw response from Bedrock: {repr(response)[:1000]}")
-        t1 = time.time()
-        logger.info(f"[call_llm_stream] Received response from Bedrock in {t1-t0:.2f}s")
-        
-        # Extract text using the correct handler
-        if model.lower() == "claude":
-            handler = ClaudeHandler(config)  # type: ignore
-        else:
-            handler = LlamaHandler(config)  # type: ignore
-        
-        response_text = handler.extract_response_text(response)
-        logger.info(f"[call_llm_stream] response_text length: {len(response_text)}, preview: {response_text[:200]}")
-        # Simulate streaming by yielding chunks
-        chunk_size = 100
-        if not response_text:
-            logger.error("[call_llm_stream] response_text is empty!")
-            yield "Xin lỗi, không có dữ liệu trả về từ LLM."
-            return
-        for i in range(0, len(response_text), chunk_size):
-            chunk = response_text[i:i + chunk_size]
-            logger.info(f"[call_llm_stream] Yield chunk: {repr(chunk)}")
-            yield chunk
-            
+            message = bedrock_client.create_message("user", prompt)
+            for chunk in bedrock_client.stream_message([message], config_overrides=config):
+                if chunk:
+                    yield chunk
     except Exception as e:
-        logger.error(f"Error in call_llm_stream: {e}")
         yield f"Xin lỗi, có lỗi xảy ra: {str(e)}"
 
-def call_llm_full(prompt, model="claude", max_tokens=2000, temperature=0.3):
+def call_llm_full(prompt, model="claude", max_tokens=4000, temperature=0.3):  # Tăng max_tokens và temperature
     """
     Get full response from AWS Bedrock
     """
@@ -93,8 +76,8 @@ def call_llm_full(prompt, model="claude", max_tokens=2000, temperature=0.3):
         else:
             config = LlamaConfig(
                 model_id="us.meta.llama4-scout-17b-instruct-v1:0",
-                max_gen_len=max_tokens,
-                temperature=temperature
+                max_gen_len=max_tokens,  # Tăng từ 2000 lên 4000
+                temperature=temperature  
             )
         # Create message
         message = bedrock_client.create_message("user", prompt)

@@ -44,6 +44,7 @@ class ChatState(TypedDict):
     metadata: Dict[str, Any]
     processing_time: Dict[str, float]
     prompt: Optional[str]  # Add prompt for streaming
+    answer_chunks: Optional[List[str]]  # Add for streaming real chunks
 
 class ConversationMemory(BaseModel):
     """Memory cho conversation context"""
@@ -126,24 +127,24 @@ class RAGNodes:
         all_docs = []
         for collection in collections:
             # TODO: Nếu search_qdrant có async, chuyển sang await
-            results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 15)
+            results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 8)  
             docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
             all_docs.extend(docs)
         if all_docs:
             reranker = get_reranker()
-            reranked_docs = await loop.run_in_executor(self._executor, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 15)
+            reranked_docs = await loop.run_in_executor(self._executor, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 8)  
             for i, doc in enumerate(all_docs[:len(reranked_docs)]):
                 doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
             # for idx, doc in enumerate(all_docs[:3]):
             #     meta = doc.metadata
             #     logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
-        state["context_docs"] = all_docs[:15]
+        state["context_docs"] = all_docs[:8]  
         duration = time.time() - start_time
         state["processing_time"]["context_retrieval"] = duration
         return state
     
     async def generate_answer(self, state: ChatState) -> ChatState:
-        """Generate answer với context"""
+        """Generate answer với context (sử dụng streaming thực sự nếu có)"""
         start_time = time.time()
         question = state["question"]
         docs = state["context_docs"]
@@ -158,13 +159,19 @@ class RAGNodes:
         prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs], intent)
         logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt[:500]: {prompt[:500]}")
         state["prompt"] = prompt  # Store prompt for streaming
-        
-        # Gọi LLM để sinh câu trả lời (sử dụng Llama làm mặc định)
+
+        # Call LLM to generate answer
         try:
-            logger.info(f"[LangGraph] Sắp gọi call_llm_full với prompt[:100]: {prompt[:100]}")
-            answer = await loop.run_in_executor(self._executor, call_llm_full, prompt, "llama")
-            logger.info(f"[LangGraph] Đã gọi xong call_llm_full, answer[:100]: {str(answer)[:100]}")
+            from services.llm_service import call_llm_stream
+            logger.info(f"[LangGraph] Sắp gọi call_llm_stream với prompt[:100]: {prompt[:100]}")
+            
+            answer_chunks = []
+            for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, "llama"))):
+                answer_chunks.append(chunk)
+            answer = "".join(answer_chunks)
+            logger.info(f"[LangGraph] Đã gọi xong call_llm_stream, answer[:100]: {str(answer)[:100]}")
             state["answer"] = answer
+            state["answer_chunks"] = answer_chunks 
         except Exception as e:
             logger.error(f"Error calling LLM: {e}")
             state["answer"] = "Xin lỗi, có lỗi xảy ra khi xử lý câu hỏi của bạn."
@@ -177,7 +184,6 @@ class RAGNodes:
             url = doc.metadata.get("url", "")
             code = doc.metadata.get("code", "")
             title = doc.metadata.get("name", doc.metadata.get("form_name", doc.metadata.get("procedure_name", "N/A")))
-            # Nếu có file_url, luôn thêm vào sources
             if file_url:
                 source = {
                     "title": title,
@@ -283,41 +289,8 @@ class RAGNodes:
 # WORKFLOW CONSTRUCTION
 # ============================================================================
 
-# def create_rag_workflow():
-#     """Tạo RAG workflow với LangGraph"""
-#     rag_nodes = RAGNodes()
-#     workflow = StateGraph(ChatState)
-#     workflow.add_node("set_intent", rag_nodes.set_intent)
-
-
-#     workflow.add_node("rewrite", rag_nodes.rewrite_query_with_context)
-
-#     workflow.add_node("retrieve", rag_nodes.retrieve_context)
-#     workflow.add_node("generate", rag_nodes.generate_answer)
-#     workflow.add_node("validate", rag_nodes.validate_output)
-#     workflow.add_node("update_memory", rag_nodes.update_memory)
-#     workflow.add_edge(START, "set_intent")
-#     workflow.add_conditional_edges(
-#         "set_intent",
-#         rag_nodes.route_by_intent,
-#         {
-#             "law_search": "rewrite",
-#             "form_search": "rewrite", 
-#             "procedure_search": "rewrite",
-#             "general_search": "rewrite"
-#         }
-#     )
-#     workflow.add_edge("rewrite", "retrieve")
-#     workflow.add_edge("retrieve", "generate")
-#     workflow.add_edge("generate", "validate")
-#     workflow.add_edge("validate", "update_memory")
-#     workflow.add_edge("update_memory", END)
-#     app = workflow.compile(checkpointer=MemorySaver())
-#     return app
-
-
 def create_rag_workflow():
-    """Tạo RAG workflow với LangGraph (đầy đủ các bước cũ)"""
+    """Tạo RAG workflow với LangGraph"""
     rag_nodes = RAGNodes()
     workflow = StateGraph(ChatState)
     workflow.add_node("set_intent", rag_nodes.set_intent)
@@ -412,7 +385,8 @@ def create_initial_state(question: str, messages: List[Dict], session_id: str) -
         "error": None,
         "metadata": {},
         "processing_time": {},
-        "prompt": None
+        "prompt": None,
+        "answer_chunks": None
     }  # type: ignore
 
 def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -431,37 +405,37 @@ def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
         print(f"{step}: {t:.4f} giây")
     return result
 
-# ============================================================================
-# EXAMPLE USAGE
-# ============================================================================
+# # ============================================================================
+# # EXAMPLE USAGE
+# # ============================================================================
 
-async def example_usage():
-    """Example usage của LangGraph workflow"""
+# async def example_usage():
+#     """Example usage của LangGraph workflow"""
     
-    # Sample data
-    question = "Tôi muốn hỏi về thủ tục đăng ký thường trú"
-    messages = [
-        {"role": "user", "content": "Xin chào"},
-        {"role": "assistant", "content": "Chào bạn! Tôi có thể giúp gì cho bạn?"}
-    ]
-    session_id = "test-session-123"
+#     # Sample data
+#     question = "Tôi muốn hỏi về thủ tục đăng ký thường trú"
+#     messages = [
+#         {"role": "user", "content": "Xin chào"},
+#         {"role": "assistant", "content": "Chào bạn! Tôi có thể giúp gì cho bạn?"}
+#     ]
+#     session_id = "test-session-123"
     
-    # Create initial state
-    initial_state = create_initial_state(question, messages, session_id)
+#     # Create initial state
+#     initial_state = create_initial_state(question, messages, session_id)
     
-    # Run workflow
-    config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
-    result = await rag_workflow.ainvoke(initial_state, config=config)
+#     # Run workflow
+#     config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
+#     result = await rag_workflow.ainvoke(initial_state, config=config)
     
-    # Extract results
-    results = extract_results_from_state(result)
-    print("=== LangGraph RAG Results ===")
-    print(f"Answer: {results['answer']}")
-    print(f"Intent: {results['intent']}")
-    print(f"Confidence: {results['confidence']}")
-    print(f"Sources: {len(results['sources'])}")
-    print(f"Processing time: {results['processing_time']}")
+#     # Extract results
+#     results = extract_results_from_state(result)
+#     print("=== LangGraph RAG Results ===")
+#     print(f"Answer: {results['answer']}")
+#     print(f"Intent: {results['intent']}")
+#     print(f"Confidence: {results['confidence']}")
+#     print(f"Sources: {len(results['sources'])}")
+#     print(f"Processing time: {results['processing_time']}")
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(example_usage()) 
+# if __name__ == "__main__":
+#     import asyncio
+#     asyncio.run(example_usage()) 

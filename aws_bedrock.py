@@ -394,6 +394,93 @@ class ModelClient:
         # Sử dụng handler để extract text
         return answer
 
+    def stream_message(
+        self,
+        messages: List[Message],
+        system_prompt: Optional[str] = None,
+        config_overrides: Optional[Union[ClaudeConfig, LlamaConfig]] = None
+    ):
+        """Stream response từ Bedrock (chỉ hỗ trợ cho model có streaming, ví dụ Llama 4)."""
+        body = self._build_request_body(messages, system_prompt, config_overrides)
+        model_id = config_overrides.model_id if config_overrides else self.config.model_id
+        self.logger.info(f"[stream_message] Starting stream for model: {model_id}")
+        try:
+            response = self.bedrock_runtime.invoke_model_with_response_stream(
+                body=json.dumps(body),
+                modelId=model_id,
+                contentType="application/json",
+                accept="application/json"
+            )
+            # Bedrock trả về response stream, mỗi chunk là bytes
+            for event in response['body']:
+                if 'chunk' in event:
+                    chunk_data = event['chunk']
+                    self.logger.debug(f"[stream_message] Raw chunk data: {repr(chunk_data)}")
+                    
+                    try:
+                        # Bedrock có thể trả về dạng {'bytes': b'...'} hoặc bytes trực tiếp
+                        if isinstance(chunk_data, dict) and 'bytes' in chunk_data:
+                            # Trường hợp {'bytes': b'...'}
+                            chunk_bytes = chunk_data['bytes']
+                            chunk_str = chunk_bytes.decode('utf-8')
+                        elif isinstance(chunk_data, bytes):
+                            # Trường hợp bytes trực tiếp
+                            chunk_str = chunk_data.decode('utf-8')
+                        else:
+                            # Trường hợp string hoặc dict khác
+                            chunk_str = chunk_data
+                        
+                        self.logger.debug(f"[stream_message] Decoded chunk: {repr(chunk_str)}")
+                        
+                        # Parse JSON
+                        if isinstance(chunk_str, dict):
+                            chunk_json = chunk_str
+                        else:
+                            chunk_json = json.loads(chunk_str)
+                        
+                        self.logger.debug(f"[stream_message] Parsed JSON: {chunk_json}")
+                        
+                        # Thử nhiều field khác nhau
+                        text = None
+                        if "generation" in chunk_json:
+                            text = chunk_json["generation"]
+                        elif "completion" in chunk_json:
+                            text = chunk_json["completion"]
+                        elif "text" in chunk_json:
+                            text = chunk_json["text"]
+                        elif "content" in chunk_json:
+                            # Có thể là format Claude-style
+                            content = chunk_json["content"]
+                            if isinstance(content, list) and len(content) > 0:
+                                text = content[0].get("text", "")
+                            elif isinstance(content, str):
+                                text = content
+                        elif "delta" in chunk_json:
+                            # Có thể là format delta
+                            delta = chunk_json["delta"]
+                            if isinstance(delta, dict) and "text" in delta:
+                                text = delta["text"]
+                        
+                        if text:
+                            self.logger.debug(f"[stream_message] Extracted text: {repr(text)}")
+                            yield text
+                        else:
+                            # Chỉ log warning nếu chunk có dữ liệu nhưng không extract được text
+                            # Bỏ qua các chunk rỗng hoặc chỉ có metadata
+                            if chunk_json and len(str(chunk_json)) > 10:  # Chỉ log nếu chunk có nội dung đáng kể
+                                self.logger.warning(f"[stream_message] No text found in chunk: {chunk_json}")
+                            else:
+                                self.logger.debug(f"[stream_message] Skipping empty/metadata chunk: {chunk_json}")
+                    except json.JSONDecodeError as e:
+                        self.logger.warning(f"[stream_message] Failed to parse JSON: {e}, chunk: {repr(chunk_str)}")
+                        continue
+                    except Exception as e:
+                        self.logger.error(f"[stream_message] Error processing chunk: {e}")
+                        continue
+        except Exception as e:
+            self.logger.error(f"Error in stream_message: {e}")
+            yield f"[STREAM_ERROR] {str(e)}"
+
 
 # ----------------------------------------------------------------------------------
 # CREATE MODEL CONFIG
