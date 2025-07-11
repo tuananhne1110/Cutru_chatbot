@@ -18,32 +18,6 @@ function ChatWindow({ messages, onSend, isLoading, sessionId, showSources, toggl
             <span className="text-xs text-gray-500 font-mono">{sessionId?.substring(0, 8)}...</span>
             <span className="text-xs text-gray-400">({messages.length} messages)</span>
           </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={loadChatHistory}
-              disabled={isLoading}
-              className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Tải lại lịch sử chat"
-            >
-              🔄 Refresh
-            </button>
-            <button
-              onClick={clearChatHistory}
-              disabled={isLoading}
-              className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Xóa toàn bộ lịch sử chat"
-            >
-              🗑️ Clear History
-            </button>
-            <button
-              onClick={createNewSession}
-              disabled={isLoading}
-              className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Tạo cuộc hội thoại mới"
-            >
-              🆕 New Chat
-            </button>
-          </div>
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4">

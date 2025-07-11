@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 function Message({ message, showSources, toggleSources }) {
   return (
     <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[80%] rounded-lg p-3 ${
+      <div className={`max-w-[85%] rounded-lg p-2 ${
         message.type === 'user'
           ? 'bg-blue-600 text-white'
           : message.type === 'error'
@@ -13,7 +13,7 @@ function Message({ message, showSources, toggleSources }) {
       }`}>
         <div className="flex items-start space-x-2">
           <div className="flex-1">
-            <div className="prose prose-sm max-w-none">
+            <div className="prose prose-sm max-w-none text-sm">
               {/* Loại bỏ hoặc thay thế link file trong nội dung trả lời */}
               {(() => {
                 const fileUrlRegex = /https?:\/\/\S+\.(docx?|pdf|xlsx?|zip|rar)(\?\S*)?/gi;
@@ -37,13 +37,13 @@ function Message({ message, showSources, toggleSources }) {
                     ? firstDownloadable.title.replace(/\s+/g, '_') + '.docx'
                     : fileUrl.split('/').pop()?.split('?')[0] || 'downloaded_file';
                 return (
-                  <div className="mt-4">
+                  <div className="mt-2">
                     <a
                       href={fileUrl}
                       download={fileName}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-semibold shadow underline"
+                      className="inline-block px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-semibold shadow underline"
                       style={{ textDecoration: 'underline', cursor: 'pointer' }}
                     >
                       📥 Tải về {firstDownloadable.code ? `mẫu ${firstDownloadable.code}` : fileName}
@@ -54,20 +54,20 @@ function Message({ message, showSources, toggleSources }) {
               return null;
             })()}
             {message.sources && message.sources.length > 0 && (
-              <div className="mt-3">
+              <div className="mt-2">
                 <button
                   onClick={() => toggleSources(message.id)}
                   className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
                 >
                   <span role="img" aria-label="book">📖</span>
                   <span>
-                    {showSources[message.id] ? 'Ẩn' : 'Hiện'} nguồn tham khảo ({message.sources.length})
+                    {showSources[message.id] ? 'Ẩn' : 'Hiện'} nguồn ({message.sources.length})
                   </span>
                 </button>
                 {showSources[message.id] && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-1 space-y-1">
                     {message.sources.map((source, index) => (
-                      <div key={index} className="text-xs bg-blue-50 p-2 rounded">
+                      <div key={index} className="text-xs bg-blue-50 p-1 rounded">
                         {/* Nếu là nguồn luật */}
                         {source.law_name && (
                           <>
@@ -101,7 +101,7 @@ function Message({ message, showSources, toggleSources }) {
                 )}
               </div>
             )}
-            <div className="text-xs opacity-70 mt-2">
+            <div className="text-xs opacity-70 mt-1">
               {new Date(message.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>

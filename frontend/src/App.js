@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import ChatWindow from './components/ChatWindow';
+import FloatingChatbot from './components/FloatingChatbot';
+import DemoPage from './components/DemoPage';
 import useChatStream from './hooks/useChatStream';
 import axios from 'axios';
 
@@ -62,21 +63,12 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <span role="img" aria-label="book" className="text-white text-xl">📖</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Trợ Lý Pháp Luật</h1>
-              <p className="text-sm text-gray-500">Hỏi đáp về luật pháp Việt Nam</p>
-            </div>
-          </div>
-        </div>
-      </header>
-      <ChatWindow
+    <div className="min-h-screen bg-white">
+      {/* Demo Page Content */}
+      <DemoPage />
+      
+      {/* Floating Chatbot */}
+      <FloatingChatbot
         messages={messages}
         onSend={sendMessage}
         isLoading={isLoading}

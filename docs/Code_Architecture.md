@@ -1,5 +1,13 @@
 # 🏗️ Kiến Trúc Code Chi Tiết - Legal Assistant Chatbot
 
+## 🖥️ Tech Stack Sử Dụng
+
+| Layer      | Thành phần chính                                                                 |
+|------------|---------------------------------------------------------------------------------|
+| **Backend**| Python 3.11, FastAPI, LangGraph, Qdrant, Supabase, SentenceTransformers, LangChain, LlamaGuard, BARTpho, BGE Reranker, AWS Bedrock |
+| **Frontend**| React 18, TailwindCSS, React Markdown, Lucide React, Axios                      |
+| **DevOps & Services** | Docker, Docker Compose, Nginx, Supabase, Pre-commit, Ruff, ESLint, GitHub Actions (nếu có) |
+
 ## 📋 Tổng Quan Hệ Thống
 
 Hệ thống Legal Assistant Chatbot là một ứng dụng AI-powered được xây dựng để hỗ trợ người dùng tìm hiểu về luật pháp Việt Nam. Hệ thống sử dụng kiến trúc microservices với frontend React và backend FastAPI, tích hợp LangGraph để xử lý workflow phức tạp và AWS Bedrock để tương tác với các mô hình ngôn ngữ lớn.
