@@ -6,24 +6,31 @@ graph TD;
   A["User (Frontend - React)"] -->|"Send question + chat history via API /chat/stream"| B["Backend (FastAPI, LangGraph)"]
   B --> C0["LangGraph RAG Workflow"]
   C0 --> C1["set_intent: Phân loại intent"]
-  C1 --> C2["guardrails_input: Kiểm duyệt an toàn đầu vào (LlamaGuard)"]
-  C2 --> C3["rewrite: Làm sạch, paraphrase câu hỏi với context"]
-  C3 --> C4["semantic_cache: Kiểm tra cache semantic với câu hỏi đã rewrite"]
+  C1 --> C2["semantic_cache_initial: Kiểm tra cache với câu hỏi gốc"]
   
-  C4 --> C5{Cache Hit?}
-  C5 -->|YES| C6["Return cached answer + sources"]
-  C5 -->|NO| C7["retrieve: Semantic Search (Qdrant, 4 collections, 25 candidates)"]
+  C2 --> C3{Cache Hit?}
+  C3 -->|YES| C4["Return cached answer + sources"]
+  C3 -->|NO| C5["guardrails_input: Kiểm duyệt an toàn đầu vào (LlamaGuard)"]
   
-  C7 --> C8["generate: Tạo prompt động + gọi LLM (AWS Bedrock)"]
-  C8 --> C9["validate: Kiểm duyệt đầu ra (LlamaGuard Output)"]
-  C9 --> C10["update_memory: Cập nhật lịch sử hội thoại"]
-  C10 --> D["Supabase (PostgreSQL): Store chat history, metadata"]
+  C5 --> C6["rewrite: Làm sạch, paraphrase câu hỏi với context"]
+  C6 --> C7["semantic_cache_rewrite: Kiểm tra cache với câu hỏi đã rewrite"]
   
-  C6 --> E["Stream cached answer + sources to Frontend"]
-  C8 --> F["Stream answer chunks + sources to Frontend"]
+  C7 --> C8{Cache Hit?}
+  C8 -->|YES| C9["Return cached answer + sources"]
+  C8 -->|NO| C10["retrieve: Semantic Search (Qdrant, 4 collections, 25 candidates)"]
+  
+  C10 --> C11["generate: Tạo prompt động + gọi LLM (AWS Bedrock)"]
+  C11 --> C12["validate: Kiểm duyệt đầu ra (LlamaGuard Output)"]
+  C12 --> C13["update_memory: Cập nhật lịch sử hội thoại"]
+  C13 --> D["Supabase (PostgreSQL): Store chat history, metadata"]
+  
+  C4 --> E["Stream cached answer + sources to Frontend"]
+  C9 --> F["Stream cached answer + sources to Frontend"]
+  C11 --> G["Stream answer chunks + sources to Frontend"]
   
   E --> A
   F --> A
+  G --> A
 ```
 
 ### 2. Mô tả chi tiết từng bước
@@ -43,27 +50,39 @@ graph TD;
 - Nhận request, sinh `session_id` nếu chưa có, chuẩn hóa lịch sử hội thoại.
 - **LangGraph RAG Workflow:**
 
-#### Bước 1-4: Xử lý chung
+#### Bước 1-2: Kiểm tra cache ban đầu
 1. **set_intent:** Phân loại intent (law, form, term, procedure, template, ambiguous).
-2. **guardrails_input:** Kiểm duyệt an toàn đầu vào (LlamaGuard Input). Nếu vi phạm, trả về thông báo an toàn.
-3. **rewrite:** Làm sạch, paraphrase câu hỏi với context từ lịch sử hội thoại (rule-based + LLM nếu cần).
-4. **semantic_cache:** Kiểm tra cache semantic với câu hỏi đã được rewrite.
+2. **semantic_cache_initial:** Kiểm tra cache semantic với câu hỏi gốc.
 
-#### Nhánh A: Cache Hit (Trùng cache)
-**Khi tìm thấy câu hỏi tương tự trong cache:**
+#### Nhánh A: Cache Hit Ban Đầu (Trùng cache với câu hỏi gốc)
+**Khi tìm thấy câu hỏi gốc tương tự trong cache:**
 - **Lấy kết quả cache:** Trích xuất answer và sources từ cache
 - **Cập nhật metadata:** Ghi log cache hit, thời gian xử lý
+- **Stream kết quả:** Gửi cached answer và sources về frontend
+- **Bỏ qua tất cả các bước:** Không cần xử lý thêm
+- **Lưu lịch sử:** Vẫn lưu vào Supabase để tracking
+
+#### Nhánh B: Cache Miss Ban Đầu (Tiếp tục xử lý)
+**Khi không tìm thấy câu hỏi gốc trong cache:**
+3. **guardrails_input:** Kiểm duyệt an toàn đầu vào (LlamaGuard Input). Nếu vi phạm, trả về thông báo an toàn.
+4. **rewrite:** Làm sạch, paraphrase câu hỏi với context từ lịch sử hội thoại (rule-based + LLM nếu cần).
+5. **semantic_cache_rewrite:** Kiểm tra cache semantic với câu hỏi đã được rewrite.
+
+#### Nhánh B1: Cache Hit Sau Rewrite (Trùng cache với câu hỏi đã rewrite)
+**Khi tìm thấy câu hỏi đã rewrite tương tự trong cache:**
+- **Lấy kết quả cache:** Trích xuất answer và sources từ cache
+- **Cập nhật metadata:** Ghi log cache hit với rewritten query
 - **Stream kết quả:** Gửi cached answer và sources về frontend
 - **Bỏ qua các bước:** Không cần retrieve, generate, validate
 - **Lưu lịch sử:** Vẫn lưu vào Supabase để tracking
 
-#### Nhánh B: Cache Miss (Không trùng cache)
-**Khi không tìm thấy câu hỏi tương tự trong cache:**
-5. **retrieve:** Tìm kiếm semantic trong các collection tương ứng (top 25).
-6. **generate:** Tạo prompt động phù hợp intent, chèn context và metadata.
-7. **validate:** Kiểm duyệt đầu ra (LlamaGuard Output).
-8. **update_memory:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
-9. **Cache kết quả:** Lưu kết quả mới vào semantic cache cho lần sau.
+#### Nhánh B2: Cache Miss Sau Rewrite (Full processing)
+**Khi không tìm thấy câu hỏi đã rewrite trong cache:**
+6. **retrieve:** Tìm kiếm semantic trong các collection tương ứng (top 25).
+7. **generate:** Tạo prompt động phù hợp intent, chèn context và metadata.
+8. **validate:** Kiểm duyệt đầu ra (LlamaGuard Output).
+9. **update_memory:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
+10. **Cache kết quả:** Lưu kết quả mới vào semantic cache cho lần sau.
 
 ### 3. Sơ Đồ Luồng Dữ Liệu Chi Tiết (Data Flow, LangGraph-based)
 
@@ -79,45 +98,78 @@ sequenceDiagram
     
     U->>B: POST /chat/stream (question + messages)
     B->>L: set_intent
-    L->>L: guardrails_input
-    L->>L: rewrite (với context từ lịch sử)
-    L->>L: semantic_cache (với câu hỏi đã rewrite)
-    L->>C: Check semantic cache với rewritten query
+    L->>L: semantic_cache_initial (với câu hỏi gốc)
+    L->>C: Check semantic cache với original query
     
-    alt Cache HIT (Trùng cache)
+    alt Cache HIT Ban Đầu (Trùng cache với câu hỏi gốc)
         C-->>L: Cached answer + sources
         L->>L: update_memory (lưu lịch sử)
         L->>S: Lưu chat history với cache flag
         L-->>B: Cached answer + sources
         B-->>U: Stream cached answer chunks + sources
-        Note over C: Cache hit - Fast response
+        Note over C: Cache hit với original query - Fastest response
         
-    else Cache MISS (Không trùng cache)
-        L->>L: retrieve
-        L->>Q: Semantic search (4 collections)
-        Q-->>L: Top 25 candidates
-        L->>L: generate
-        L->>LLM: Generate answer (streaming)
-        LLM-->>L: Answer chunks
-        L->>L: validate
-        L->>L: update_memory
-        L->>S: Lưu lịch sử chat, log
-        L->>C: Cache kết quả mới
-        L-->>B: Trả answer + sources
-        B-->>U: Stream answer chunks + sources
-        Note over C: Cache miss - Full processing
+    else Cache MISS Ban Đầu (Tiếp tục xử lý)
+        L->>L: guardrails_input
+        L->>L: rewrite (với context từ lịch sử)
+        L->>L: semantic_cache_rewrite (với câu hỏi đã rewrite)
+        L->>C: Check semantic cache với rewritten query
+        
+        alt Cache HIT Sau Rewrite (Trùng cache với câu hỏi đã rewrite)
+            C-->>L: Cached answer + sources
+            L->>L: update_memory (lưu lịch sử)
+            L->>S: Lưu chat history với cache flag
+            L-->>B: Cached answer + sources
+            B-->>U: Stream cached answer chunks + sources
+            Note over C: Cache hit với rewritten query - Fast response
+            
+        else Cache MISS Sau Rewrite (Full processing)
+            L->>L: retrieve
+            L->>Q: Semantic search (4 collections)
+            Q-->>L: Top 25 candidates
+            L->>L: generate
+            L->>LLM: Generate answer (streaming)
+            LLM-->>L: Answer chunks
+            L->>L: validate
+            L->>L: update_memory
+            L->>S: Lưu lịch sử chat, log
+            L->>C: Cache kết quả mới
+            L-->>B: Trả answer + sources
+            B-->>U: Stream answer chunks + sources
+            Note over C: Cache miss - Full processing
+        end
     end
 ```
 
 ### 4. Chi Tiết Xử Lý Cache Hit vs Cache Miss
 
-#### 🔄 **Cache Hit Scenario:**
+#### 🚀 **Cache Hit Ban Đầu (Fastest):**
 ```json
 {
-  "processing_flow": "cache_hit",
-  "steps_executed": ["set_intent", "guardrails_input", "rewrite", "semantic_cache"],
+  "processing_flow": "cache_hit_initial",
+  "steps_executed": ["set_intent", "semantic_cache_initial"],
   "cache_data": {
     "original_query": "Làm thế nào để đăng ký thường trú?",
+    "cached_answer": "Để đăng ký thường trú, bạn cần...",
+    "cached_sources": [...],
+    "cache_timestamp": "2024-01-15T10:30:00Z",
+    "similarity_score": 0.98
+  },
+  "performance_metrics": {
+    "total_processing_time": "0.1s",
+    "cache_lookup_time": "0.02s",
+    "saved_processing_time": "4.1s"
+  }
+}
+```
+
+#### ⚡ **Cache Hit Sau Rewrite (Fast):**
+```json
+{
+  "processing_flow": "cache_hit_rewrite",
+  "steps_executed": ["set_intent", "semantic_cache_initial", "guardrails_input", "rewrite", "semantic_cache_rewrite"],
+  "cache_data": {
+    "original_query": "Làm thế nào?",
     "rewritten_query": "Làm thế nào để đăng ký thường trú theo quy định hiện hành?",
     "cached_answer": "Để đăng ký thường trú, bạn cần...",
     "cached_sources": [...],
@@ -125,18 +177,18 @@ sequenceDiagram
     "similarity_score": 0.95
   },
   "performance_metrics": {
-    "total_processing_time": "0.2s",
+    "total_processing_time": "0.3s",
     "cache_lookup_time": "0.05s",
-    "saved_processing_time": "3.8s"
+    "saved_processing_time": "3.9s"
   }
 }
 ```
 
-#### ⚡ **Cache Miss Scenario:**
+#### 🔄 **Cache Miss (Full Processing):**
 ```json
 {
-  "processing_flow": "cache_miss",
-  "steps_executed": ["set_intent", "guardrails_input", "rewrite", "semantic_cache", "retrieve", "generate", "validate", "update_memory"],
+  "processing_flow": "cache_miss_full",
+  "steps_executed": ["set_intent", "semantic_cache_initial", "guardrails_input", "rewrite", "semantic_cache_rewrite", "retrieve", "generate", "validate", "update_memory"],
   "processing_details": {
     "intent": "procedure",
     "confidence": 0.89,
@@ -201,14 +253,20 @@ sequenceDiagram
 
 ### 7. Tối Ưu Hóa Hiệu Suất
 
-#### 🚀 **Cache Hit Benefits:**
-- **Thời gian phản hồi:** Giảm từ ~4s xuống ~0.2s
+#### 🚀 **Cache Hit Ban Đầu (Fastest):**
+- **Thời gian phản hồi:** Giảm từ ~4s xuống ~0.1s
+- **Tiết kiệm tài nguyên:** Không cần xử lý gì thêm
+- **Trải nghiệm người dùng:** Phản hồi cực nhanh
+- **Chi phí:** Tiết kiệm tối đa API calls
+
+#### ⚡ **Cache Hit Sau Rewrite (Fast):**
+- **Thời gian phản hồi:** Giảm từ ~4s xuống ~0.3s
 - **Tiết kiệm tài nguyên:** Không cần gọi LLM và search
-- **Trải nghiệm người dùng:** Phản hồi nhanh hơn
+- **Trải nghiệm người dùng:** Phản hồi nhanh
 - **Chi phí:** Giảm chi phí API calls
 
-#### 📊 **Cache Miss Processing:**
-- **Full RAG pipeline:** Chạy đầy đủ 8 bước
+#### 📊 **Cache Miss (Full Processing):**
+- **Full RAG pipeline:** Chạy đầy đủ 10 bước
 - **Semantic search:** Tìm kiếm trong 4 collections
 - **LLM generation:** Tạo câu trả lời mới
 - **Quality assurance:** Validate an toàn
@@ -220,10 +278,10 @@ sequenceDiagram
 - **Frontend tự động nhận sources và render nút tải về mẫu, hiển thị nguồn tham khảo đúng loại (luật, biểu mẫu...).**
 - **Không còn link dài ngoằng trong nội dung trả lời.**
 - **UX tốt hơn, người dùng dễ dàng tải file mẫu và xem nguồn tham khảo.**
-- **LangGraph workflow với 8 bước xử lý tuần tự.**
+- **LangGraph workflow với 10 bước xử lý tuần tự.**
 - **Streaming thực sự từ AWS Bedrock LLM.**
-- **Semantic cache với câu hỏi đã được rewrite để tối ưu hiệu suất.**
+- **Double semantic cache: Kiểm tra cache với câu hỏi gốc và câu hỏi đã rewrite.**
 - **Guardrails an toàn đầu vào và đầu ra.**
-- **Xử lý thông minh cho cache hit/miss với performance metrics chi tiết.**
+- **Xử lý thông minh cho 3 scenarios: cache hit ban đầu, cache hit sau rewrite, và cache miss với performance metrics chi tiết.**
 
 
