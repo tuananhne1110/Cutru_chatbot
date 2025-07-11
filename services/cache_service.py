@@ -8,6 +8,10 @@ CACHE_KEY = "semantic_prompt_cache"
 CACHE_LIMIT = 1000  # Giới hạn số lượng cache
 PARAPHRASE_CACHE_PREFIX = "paraphrase_cache:"
 
+CACHE_KEY = "semantic_prompt_cache"
+CACHE_LIMIT = 1000  # Giới hạn số lượng cache
+PARAPHRASE_CACHE_PREFIX = "paraphrase_cache:"
+
 def cosine_similarity(a, b):
     a = np.array(a)
     b = np.array(b)
