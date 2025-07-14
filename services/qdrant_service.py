@@ -2,22 +2,23 @@ import sys
 import os
 from app_config import qdrant_client
 import instructor
-import google.generativeai as genai
-from instructor import Mode
+from instructor import from_bedrock, Mode
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from qdrant_client.models import Filter, Condition
+import boto3
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY")) # type: ignore
 
-gemini_model = genai.GenerativeModel("gemini-1.5-flash-latest") # type: ignore
-llm_client = instructor.from_gemini(
-    client=gemini_model,
-    mode=Mode.GEMINI_JSON
-)
+def _setup_llm_client():
+        bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
+        return from_bedrock(
+            client=bedrock_runtime,
+            model="us.meta.llama4-scout-17b-instruct-v1:0",
+            mode=Mode.BEDROCK_JSON,
+        )
+
+llm_client = _setup_llm_client()
 
 class QdrantFilterWrapper(BaseModel):
     must: list[Condition] = []
@@ -178,38 +179,23 @@ FORMATTED_INDEXES_TEMPLATE = '- code - KEYWORD\n- name - KEYWORD\n- description 
 
 
 def automate_filtering(user_query, formatted_indexes, filter_prompt):
-    try:
-        # Use the raw Gemini client instead of instructor
-        prompt = f"{filter_prompt.strip()}\n\n<query>{user_query}</query>\n<indexes>\n{formatted_indexes}\n</indexes>"
-        response = gemini_model.generate_content(prompt)
-        
-        # For now, return empty filter to avoid the async issue
-        # TODO: Implement proper JSON parsing from response
-        return Filter()
-    except Exception as e:
-        print(f"Error in automate_filtering: {e}")
-        # Return empty filter on error
-        return Filter()
+    response = llm_client.messages.create(
+        response_model=QdrantFilterWrapper,
+        messages=[
+            {"role": "user", "content": filter_prompt.strip()},
+            {"role": "assistant", "content": "Đã hiểu. Tôi sẽ tuân thủ các quy tắc."},
+            {"role": "user", "content": f"<query>{user_query}</query>\n<indexes>\n{formatted_indexes}\n</indexes>"}
+        ]
+    )
+
+    return response.to_qdrant_filter()
 
 
 
 def search_qdrant(collection_name, query_embedding, query, limit=5):
-    # return qdrant_client.search(
-    #     collection_name=collection_name,
-    #     query_vector=query_embedding,
-    #     limit=limit
-    # ) 
     # if ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
     print("###" + query + "###")
-    print("###" + query + "###")
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
-    print("###" + collection_name + "###")
+
 
 
     if collection_name == "procedure_chunks":
@@ -236,11 +222,24 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
 
     filter_condition = automate_filtering(user_query = query, formatted_indexes= formatted_indexes, filter_prompt= filter_prompt)
     
-    return qdrant_client.query_points(
+    filter_result = qdrant_client.query_points(
         collection_name=collection_name,
         query=query_embedding,
         query_filter = filter_condition,
         limit= limit,
         with_payload=True, # Trả về payload
         with_vectors=False # Không trả về vector
-    ).points , filter_condition
+    ).points
+
+    if filter_condition is not None and len(filter_result) == 0:
+        vector_search_results = qdrant_client.search(
+                   collection_name=collection_name,
+                    query_vector=query_embedding,
+                    limit=limit,
+                    with_payload=True
+                )
+        
+        return vector_search_results, filter_condition
+    else:
+        return filter_result, filter_condition
+    # return  , filter_condition

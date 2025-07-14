@@ -266,6 +266,25 @@ def parse_law_text(raw, meta):
                         clause_content = clause_text
                     point_matches = list(point_pat.finditer(clause_text))
                     if point_matches:
+                        # Nếu có điểm, content khoản là phần trước điểm đầu tiên
+                        first_point_start = point_matches[0].start()
+                        clause_content_main = clause_text[clause_no.end():first_point_start].strip() if clause_no else clause_text[:first_point_start].strip()
+                        # Tạo record cho khoản với content là phần trước điểm đầu tiên
+                        records.append({
+                            **meta,
+                            "chapter": chapter_title,
+                            "section": None,
+                            "article": art_title,
+                            "clause": clause_no.group(1) if clause_no else None,
+                            "point": None,
+                            "type": "khoản",
+                            "id": clause_id,
+                            "parent_id": article_id,
+                            "parent_type": "điều",
+                            "content": clause_content_main,
+                            "law_ref": f"{meta['law_name']}, {art_title}, Khoản {clause_no.group(1) if clause_no else '?'}",
+                            "category": "law"
+                        })
                         point_spans = [m.start() for m in point_matches] + [len(clause_text)]
                         for m_ in range(len(point_spans)-1):
                             point_start = point_spans[m_]
@@ -273,7 +292,6 @@ def parse_law_text(raw, meta):
                             point_text = clause_text[point_start:point_end].strip()
                             point_id_match = re.match(r"([a-e])\)", point_text)
                             point_id = f"{clause_id}_{point_id_match.group(1)}" if point_id_match else f"{clause_id}_?"
-                            
                             # Bỏ "a)" khỏi content của điểm
                             if point_id_match:
                                 point_content = point_text[point_id_match.end():].strip()
@@ -295,6 +313,7 @@ def parse_law_text(raw, meta):
                                 "category": "law"
                             })
                     else:
+                        # Không có điểm, content khoản giữ nguyên như cũ
                         records.append({
                             **meta,
                             "chapter": chapter_title,

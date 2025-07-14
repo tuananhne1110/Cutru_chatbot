@@ -4,13 +4,7 @@ import pickle
 import os
 
 # Load QDrant client
-try:
-    with open("qdrant_client.pkl", "rb") as f:
-        client = pickle.load(f)
-    print("✅ Loaded QDrant client from pickle file")
-except FileNotFoundError:
-    print("❌ qdrant_client.pkl not found, using localhost")
-    client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(host="localhost", port=6333)
 
 def create_indexes_for_collection(collection_name, fields_to_index):
     """Tạo payload indexes cho một collection"""

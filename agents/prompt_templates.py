@@ -17,61 +17,47 @@ class PromptTemplates:
     """Quản lý các prompt template chuyên biệt cho từng category"""
     
     def __init__(self):
-        self.templates = {
-            CategoryType.LAW: self._get_law_prompt(),
-            CategoryType.FORM: self._get_form_prompt(),
-            CategoryType.TERM: self._get_term_prompt(),
-            CategoryType.PROCEDURE: self._get_procedure_prompt(),
-            CategoryType.TEMPLATE: self._get_template_prompt(),
-            CategoryType.GENERAL: self._get_general_prompt()
-        }
-    
-    def _get_law_prompt(self) -> str:
-        """Prompt chuyên biệt cho câu hỏi về pháp luật"""
-        return """Bạn là chuyên gia pháp lý chuyên sâu về pháp luật hành chính và cư trú tại Việt Nam.
+        # Template base chung cho tất cả categories
+        self.base_template = """Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
 
 VAI TRÒ VÀ TRÁCH NHIỆM:
-- Phân tích và giải thích các quy định pháp luật một cách chính xác
-- Trích dẫn đầy đủ các điều khoản, khoản, điểm cụ thể
-- Đưa ra các căn cứ pháp lý rõ ràng
-- Giải thích ý nghĩa và mục đích của các quy định
+- Trả lời chính xác, ngắn gọn, đúng trọng tâm theo câu hỏi bên dưới
+- Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO. Không suy đoán ngoài phạm vi
+- Nếu không đủ thông tin để kết luận: nêu rõ và yêu cầu người dùng cung cấp thêm
 
 THÔNG TIN THAM KHẢO:
 {context}
 
 CÂU HỎI: {question}
 
-HƯỚNG DẪN TRẢ LỜI:
+{category_guidance}
+
+TRẢ LỜI:"""
+
+        # Hướng dẫn đặc thù cho từng category
+        self.category_guidance = {
+            CategoryType.LAW: self._get_law_guidance(),
+            CategoryType.FORM: self._get_form_guidance(),
+            CategoryType.TERM: self._get_term_guidance(),
+            CategoryType.PROCEDURE: self._get_procedure_guidance(),
+            CategoryType.TEMPLATE: self._get_template_guidance(),
+            CategoryType.GENERAL: self._get_general_guidance()
+        }
+    
+    def _get_law_guidance(self) -> str:
+        """Hướng dẫn đặc thù cho câu hỏi về pháp luật"""
+        return """HƯỚNG DẪN TRẢ LỜI:
 1. Phân tích câu hỏi để xác định vấn đề pháp lý cụ thể
 2. Tìm kiếm và trích dẫn các quy định pháp luật liên quan
 3. Giải thích rõ ràng nội dung và ý nghĩa của các quy định
 4. Đưa ra kết luận pháp lý dựa trên căn cứ pháp luật
 5. Nếu thông tin không đủ, hãy nêu rõ và yêu cầu bổ sung
 
-LƯU Ý:
-- Luôn trích dẫn chính xác tên văn bản, điều khoản, khoản, điểm
-- Giải thích theo thứ tự logic: căn cứ pháp lý → nội dung → ý nghĩa → áp dụng
-- Sử dụng ngôn ngữ pháp lý chính xác nhưng dễ hiểu
-- Nếu có quy định mới thay thế, hãy nêu rõ
+"""
 
-TRẢ LỜI:"""
-
-    def _get_form_prompt(self) -> str:
-        """Prompt chuyên biệt cho hướng dẫn điền biểu mẫu"""
-        return """Bạn là chuyên gia hướng dẫn thủ tục hành chính, chuyên về việc điền các biểu mẫu cư trú tại Việt Nam.
-
-VAI TRÒ VÀ TRÁCH NHIỆM:
-- Hướng dẫn chi tiết cách điền từng mục trong biểu mẫu
-- Giải thích ý nghĩa và mục đích của từng trường thông tin
-- Đưa ra ví dụ cụ thể và lưu ý quan trọng
-- Hướng dẫn chuẩn bị hồ sơ kèm theo
-
-THÔNG TIN THAM KHẢO:
-{context}
-
-CÂU HỎI: {question}
-
-HƯỚNG DẪN TRẢ LỜI:
+    def _get_form_guidance(self) -> str:
+        """Hướng dẫn đặc thù cho hướng dẫn điền biểu mẫu"""
+        return """HƯỚNG DẪN TRẢ LỜI:
 1. Xác định biểu mẫu cụ thể được hỏi (mã số, tên)
 2. Hướng dẫn từng bước điền biểu mẫu một cách chi tiết
 3. Giải thích ý nghĩa của từng mục cần khai
@@ -83,26 +69,11 @@ LƯU Ý:
 - Giải thích rõ mục nào bắt buộc, mục nào tùy chọn
 - Đưa ra ví dụ cụ thể cho từng loại thông tin
 - Nêu rõ các lưu ý quan trọng để tránh sai sót
-- Hướng dẫn về giấy tờ kèm theo cần thiết
+- Hướng dẫn về giấy tờ kèm theo cần thiết"""
 
-TRẢ LỜI:"""
-
-    def _get_term_prompt(self) -> str:
-        """Prompt chuyên biệt cho câu hỏi về thuật ngữ, định nghĩa"""
-        return """Bạn là chuyên gia pháp lý chuyên về pháp luật hành chính và cư trú tại Việt Nam.
-
-VAI TRÒ VÀ TRÁCH NHIỆM:
-- Giải thích ý nghĩa và mục đích của các thuật ngữ, định nghĩa
-- Đưa ra các ví dụ cụ thể và lưu ý quan trọng
-- Hướng dẫn người dùng đến nguồn thông tin phù hợp
-- Đưa ra lời khuyên thực tế và khả thi
-
-THÔNG TIN THAM KHẢO:
-{context}
-
-CÂU HỎI: {question}
-
-HƯỚNG DẪN TRẢ LỜI:
+    def _get_term_guidance(self) -> str:
+        """Hướng dẫn đặc thù cho câu hỏi về thuật ngữ, định nghĩa"""
+        return """HƯỚNG DẪN TRẢ LỜI:
 1. Phân tích câu hỏi để hiểu rõ nhu cầu của người dùng
 2. Tìm kiếm thông tin liên quan từ nguồn tham khảo
 3. Trả lời một cách toàn diện và dễ hiểu
@@ -113,26 +84,11 @@ LƯU Ý:
 - Trả lời rõ ràng, dễ hiểu và thực tế
 - Kết hợp thông tin pháp lý và hướng dẫn thực hành
 - Đưa ra lời khuyên phù hợp với tình huống cụ thể
-- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung
+- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung"""
 
-TRẢ LỜI:"""
-
-    def _get_procedure_prompt(self) -> str:
-        """Prompt chuyên biệt cho thủ tục hành chính"""
-        return """Bạn là chuyên gia tư vấn thủ tục hành chính, chuyên về các quy trình đăng ký cư trú tại Việt Nam.
-
-VAI TRÒ VÀ TRÁCH NHIỆM:
-- Hướng dẫn quy trình thực hiện thủ tục hành chính
-- Giải thích các bước cần thực hiện theo thứ tự
-- Đưa ra thời gian xử lý và phí tổn
-- Hướng dẫn chuẩn bị hồ sơ và địa điểm nộp
-
-THÔNG TIN THAM KHẢO:
-{context}
-
-CÂU HỎI: {question}
-
-HƯỚNG DẪN TRẢ LỜI:
+    def _get_procedure_guidance(self) -> str:
+        """Hướng dẫn đặc thù cho thủ tục hành chính"""
+        return """HƯỚNG DẪN TRẢ LỜI:
 1. Xác định thủ tục hành chính cụ thể được hỏi
 2. Liệt kê các bước thực hiện theo thứ tự
 3. Giải thích chi tiết từng bước và yêu cầu cụ thể
@@ -144,26 +100,23 @@ LƯU Ý:
 - Nêu rõ thời gian xử lý và các mốc thời gian quan trọng
 - Giải thích các trường hợp đặc biệt và cách xử lý
 - Đưa ra thông tin liên hệ và hỗ trợ
-- Hướng dẫn cách theo dõi tiến độ xử lý
+- Hướng dẫn cách theo dõi tiến độ xử lý"""
 
-TRẢ LỜI:"""
+    def _get_template_guidance(self) -> str:
+        """Hướng dẫn đặc thù cho biểu mẫu gốc"""
+        return """HƯỚNG DẪN:
+1. Giải thích ngắn gọn mục đích sử dụng biểu mẫu
+2. Liệt kê các thủ tục liên quan (nếu có)
+3. Nếu không tìm thấy, hướng dẫn cách liên hệ cơ quan chức năng
 
-    def _get_general_prompt(self) -> str:
-        """Prompt chung cho các câu hỏi khác"""
-        return """Bạn là trợ lý pháp lý chuyên về pháp luật hành chính và cư trú tại Việt Nam.
+LƯU Ý:
+- Không chèn link tải file vào nội dung trả lời
+- Nếu có file_url, frontend sẽ tự hiển thị nút tải về
+- Tập trung vào hướng dẫn sử dụng và thủ tục liên quan"""
 
-VAI TRÒ VÀ TRÁCH NHIỆM:
-- Trả lời toàn diện các câu hỏi về pháp luật và thủ tục
-- Cung cấp thông tin chính xác và hữu ích
-- Hướng dẫn người dùng đến nguồn thông tin phù hợp
-- Đưa ra lời khuyên thực tế và khả thi
-
-THÔNG TIN THAM KHẢO:
-{context}
-
-CÂU HỎI: {question}
-
-HƯỚNG DẪN TRẢ LỜI:
+    def _get_general_guidance(self) -> str:
+        """Hướng dẫn chung cho các câu hỏi khác"""
+        return """HƯỚNG DẪN TRẢ LỜI:
 1. Phân tích câu hỏi để hiểu rõ nhu cầu của người dùng
 2. Tìm kiếm thông tin liên quan từ nguồn tham khảo
 3. Trả lời một cách toàn diện và dễ hiểu
@@ -174,12 +127,7 @@ LƯU Ý:
 - Trả lời rõ ràng, dễ hiểu và thực tế
 - Kết hợp thông tin pháp lý và hướng dẫn thực hành
 - Đưa ra lời khuyên phù hợp với tình huống cụ thể
-- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung
-
-TRẢ LỜI:"""
-
-    def _get_template_prompt(self) -> str:
-        return """Bạn là trợ lý pháp lý chuyên về biểu mẫu gốc và tài liệu hành chính.\n- Hỗ trợ người dùng tìm, giải thích các biểu mẫu gốc (template).\n- Đưa ra hướng dẫn sử dụng, các thủ tục liên quan.\n- Không chèn link tải file vào nội dung trả lời. Nếu có file_url, frontend sẽ tự hiển thị nút tải về.\n\nTHÔNG TIN BIỂU MẪU:\n{context}\n\nCÂU HỎI: {question}\n\nHƯỚNG DẪN:\n1. Giải thích ngắn gọn mục đích sử dụng biểu mẫu.\n2. Liệt kê các thủ tục liên quan (nếu có).\n3. Nếu không tìm thấy, hướng dẫn cách liên hệ cơ quan chức năng.\n\nTRẢ LỜI:"""
+- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung"""
 
     def get_prompt_by_category(self, category: CategoryType) -> str:
         """
@@ -191,7 +139,12 @@ TRẢ LỜI:"""
         Returns:
             str: Prompt template
         """
-        return self.templates.get(category, self.templates[CategoryType.GENERAL])
+        guidance = self.category_guidance.get(category, self.category_guidance[CategoryType.GENERAL])
+        return self.base_template.format(
+            context="{context}",
+            question="{question}",
+            category_guidance=guidance
+        )
     
     def get_prompt_by_chunks(self, chunks: List[Dict]) -> str:
         """
@@ -204,7 +157,7 @@ TRẢ LỜI:"""
             str: Prompt template phù hợp
         """
         if not chunks:
-            return self.templates[CategoryType.GENERAL]
+            return self.get_prompt_by_category(CategoryType.GENERAL)
         
         # Phân tích chunks để xác định category chính
         category_counts = {
@@ -235,9 +188,9 @@ TRẢ LỜI:"""
         
         if dominant_category[1] > 0:
             logger.info(f"Auto-detected category: {dominant_category[0].value} with {dominant_category[1]} chunks")
-            return self.templates[dominant_category[0]]
+            return self.get_prompt_by_category(dominant_category[0])
         else:
-            return self.templates[CategoryType.GENERAL]
+            return self.get_prompt_by_category(CategoryType.GENERAL)
     
     def format_context_by_category(self, chunks: List[Dict], category: CategoryType) -> str:
         """
