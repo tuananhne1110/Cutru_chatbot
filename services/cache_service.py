@@ -2,11 +2,11 @@ import redis
 import hashlib
 import json
 import numpy as np
+import os
 
-r = redis.Redis(host='localhost', port=6379, db=0)
-CACHE_KEY = "semantic_prompt_cache"
-CACHE_LIMIT = 1000  # Giới hạn số lượng cache
-PARAPHRASE_CACHE_PREFIX = "paraphrase_cache:"
+redis_host = os.getenv("REDIS_HOST", "localhost")
+redis_port = int(os.getenv("REDIS_PORT", "6379"))
+r = redis.Redis(host=redis_host, port=redis_port, db=0)
 
 CACHE_KEY = "semantic_prompt_cache"
 CACHE_LIMIT = 1000  # Giới hạn số lượng cache

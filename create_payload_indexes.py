@@ -4,8 +4,10 @@ import pickle
 import os
 
 # Load QDrant client
-client = QdrantClient(host="localhost", port=6333)
-
+client = QdrantClient(
+    host=os.getenv("QDRANT_HOST", "qdrant"),
+    port=int(os.getenv("QDRANT_PORT", 6333))
+)
 def create_indexes_for_collection(collection_name, fields_to_index):
     """Tạo payload indexes cho một collection"""
     print(f"\n🔧 Creating indexes for collection: {collection_name}")
