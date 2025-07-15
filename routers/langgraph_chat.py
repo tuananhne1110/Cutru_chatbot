@@ -75,7 +75,7 @@ async def langgraph_chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(stream_llm(), media_type="text/event-stream")
     except Exception as e:
-        logger.error(f"Exception in /chat/stream endpoint: {e}")
+        logger.error(f"Exception in /chat/stream endpoint: {e}",exc_info=True)
         def error_stream(e=e):
             yield f"data: {{\"type\": \"error\", \"content\": \"Đã xảy ra lỗi: {str(e)}\"}}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream") 

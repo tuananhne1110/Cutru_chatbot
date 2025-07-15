@@ -23,7 +23,10 @@ BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
 embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
 
 # Initialization QDrant client
-qdrant_client = QdrantClient(host="localhost", port=6333)
+qdrant_client = QdrantClient(
+    host=os.getenv("QDRANT_HOST", "qdrant"),
+    port=int(os.getenv("QDRANT_PORT", 6333))
+)
 
 # Initialization Supabase client
 supabase: Optional[Client] = None
