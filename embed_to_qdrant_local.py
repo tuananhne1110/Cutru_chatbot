@@ -4,7 +4,7 @@ import pickle
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType
 from app_config import embedding_model
-
+from app_config import qdrant_client as client
 # 1. Đường dẫn các file chunk
 json_files = [
     'chunking/output_json/form_chunks.json',
@@ -47,11 +47,6 @@ print(f"Term chunks: {len(term_chunks)}")
 print(f"Procedure chunks: {len(procedure_chunks)}")
 print(f"Template chunks: {len(template_chunks)}")
 
-# 2. Kết nối Qdrant localhost
-client = QdrantClient(
-    host=os.getenv("QDRANT_HOST", "qdrant"),
-    port=int(os.getenv("QDRANT_PORT", 6333))
-)
 
 # 3. Hàm chuẩn hóa text và metadata về lowercase
 def prepare_text_for_embedding(chunk):

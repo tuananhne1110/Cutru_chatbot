@@ -7,6 +7,18 @@ from pydantic import BaseModel
 from qdrant_client.models import Filter, Condition
 import boto3
 
+
+# | Field                                           | Index     |
+# | ----------------------------------------------- | --------- |
+# | `procedure_name`                                | `text`    |
+# | `source_section`                                | `text`    |
+# | `description`                                   | `text`    |
+# | `note`, `requirements`, `implementation_result` | `text`    |
+# | `procedure_code`                                | `keyword` |
+# | `category`, `field`, `implementation_level`     | `keyword` |
+# | `implementation_subject`                        | `keyword` |
+
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -45,23 +57,23 @@ Vui lòng tuân thủ các quy tắc sau:
 7. Nếu truy vấn có chứa nhiều điều kiện, hãy kết hợp tất cả trong `must` (và `must_not` nếu có loại trừ).
 8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
 9. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
-   - **procedure_code** (`KEYWORD`): Mã số thủ tục hành chính. VD: `"1.002755"`.
-   - **category** (`KEYWORD`): Nhóm nội dung. Thường là `"Thủ tục hành chính"`.
-   - **content_type** (`KEYWORD`): Loại nội dung: `"text"` hoặc `"table_row"`.
-   - **implementing_agency** (`KEYWORD`): Cơ quan trực tiếp xử lý. VD: `"Công an Xã"`.
-   - **implementation_subject** (`KEYWORD`): Đối tượng thực hiện. VD: `"Công dân Việt Nam"`, `"Tổ chức"`.
-   - **coordinating_agency** (`KEYWORD`): Cơ quan phối hợp thực hiện (nếu có).
-   - **implementation_result** (`KEYWORD`): Kết quả xử lý. VD: `"Cập nhật dữ liệu cư trú"`.
-   - **implementation_level** (`KEYWORD`): Cấp thực hiện. VD: `"Cấp Xã"`, `"Cấp Huyện"`.
-   - **procedure_name** (`KEYWORD`): Tên thủ tục. VD: `"Gia hạn tạm trú"`, "Đăng ký tạm trú"`
-   - **competent_authority** (`KEYWORD`): Cơ quan có thẩm quyền quyết định.
-   - **field** (`KEYWORD`): Lĩnh vực quản lý. VD: `"Cư trú"`, `"Xuất nhập cảnh"`.
-   - **application_receiving_address** (`KEYWORD`): Địa điểm tiếp nhận hồ sơ.
-   - **procedure_type** (`KEYWORD`): Loại thủ tục. VD: `"TTHC được luật giao quy định chi tiết"`.
-   - **source_section** (`KEYWORD`): Phần nội dung gốc, chỉ có trong 4 thành phân `"Trình tự thực hiện"`, `"cách thức thực hiện"`, `"thành phần hồ sơ"` và `"Căn cứ pháp lý"`
-   - **decision_number** (`KEYWORD`): Số hiệu quyết định ban hành thủ tục.
-   - **authorized_agency** (`KEYWORD`): Cơ quan được ủy quyền thực hiện (nếu có).
-   - **table_title** (`KEYWORD`): Tiêu đề của bảng dữ liệu (nếu có). VD: `"Cách thức thực hiện"`.
+    - **procedure_code** (`KEYWORD`): Mã số thủ tục hành chính. VD: "1.002755". Cần so khớp chính xác tuyệt đối.
+    - **category** (`KEYWORD`): Nhóm nội dung. Thường là "Thủ tục hành chính". Danh sách giá trị cố định.
+    - **content_type** (`KEYWORD`): Loại nội dung: "text" hoặc "table_row". Dùng để xác định dạng dữ liệu.
+    - **implementing_agency** (`TEXT`): Cơ quan trực tiếp xử lý. VD: "Công an xã", "Phòng Tư pháp" — người dùng có thể nhập tự nhiên.
+    - **implementation_subject** (`TEXT`): Đối tượng thực hiện. VD: "Công dân Việt Nam", "Tổ chức", "Người nước ngoài".
+    - **coordinating_agency** (`TEXT`): Cơ quan phối hợp thực hiện (nếu có). Tên có thể dài, nhập tự nhiên.
+    - **implementation_result** (`TEXT`): Kết quả xử lý. VD: "Cập nhật dữ liệu cư trú", "Cấp sổ tạm trú".
+    - **implementation_level** (`KEYWORD`): Cấp hành chính thực hiện. VD: "Cấp Xã", "Cấp Huyện", "Cấp Tỉnh".
+    - **procedure_name** (`TEXT`): Tên thủ tục hành chính. VD: "Gia hạn tạm trú", "Đăng ký tạm trú" — thường được nhập tự nhiên.
+    - **competent_authority** (`TEXT`): Cơ quan có thẩm quyền quyết định. Có thể là nhiều loại tên dài, không cố định.
+    - **field** (`KEYWORD`): Lĩnh vực quản lý. VD: "Cư trú", "Xuất nhập cảnh", "Hộ tịch". Danh mục ngắn và cố định.
+    - **application_receiving_address** (`TEXT`): Địa điểm tiếp nhận hồ sơ. Thường là địa chỉ hoặc tên cơ quan.
+    - **procedure_type** (`KEYWORD`): Loại thủ tục. VD: "TTHC được luật giao quy định chi tiết", "TTHC đặc thù".
+    - **source_section** (`TEXT`): Phần nội dung gốc chỉ thuộc 1 trong 3 TỪ KHÓA SAU `"cách thức thực hiện"`, `"thành phần hồ sơ"`. `"căn cứ pháp lý"`
+    - **decision_number** (`KEYWORD`): Số hiệu quyết định ban hành thủ tục. VD: "1234/QĐ-BCA".
+    - **authorized_agency** (`TEXT`): Cơ quan được ủy quyền thực hiện (nếu có). Tên có thể đa dạng, không chuẩn hoá hoàn toàn.
+    - **table_title** (`TEXT`): Tiêu đề của bảng dữ liệu (nếu có). VD: "Cách thức thực hiện", "Thời hạn giải quyết".
 Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 """
 
@@ -79,24 +91,19 @@ Vui lòng tuân thủ các quy tắc sau:
 8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
 9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
-    - **law_name** (`KEYWORD`): Tên đầy đủ của văn bản pháp luật. VD: `"luật xuất nhập cảnh"`.
-    - **law_code** (`KEYWORD`): Mã số văn bản pháp luật. VD: `"04/2016/TT-BNG"`.
-    - **promulgation_date** (`KEYWORD`): Ngày ban hành văn bản. VD: `"30 tháng 6 năm 2016"`.
-    - **effective_date** (`KEYWORD`): Ngày có hiệu lực (nếu có). VD: `"01 tháng 8 năm 2016"`.
-    - **promulgator** (`KEYWORD`): Cơ quan ban hành. VD: `"bộ ngoại giao"`, `"chính phủ"`.
-    - **law_type** (`KEYWORD`): Loại văn bản. VD: `"thông tư"`, `"nghị định"`, `"luật"`.
-    - **chapter** (`KEYWORD`): Chương. VD: `"chương i"`, `"chương ii"`.
-    - **section** (`KEYWORD`): Mục (nếu có). VD: `"mục 1"`, `"mục 2"`.
-    - **article** (`KEYWORD`): Điều. VD: `"điều 1"`, `"điều 10"`.
-    - **clause** (`KEYWORD`): Khoản (nếu có). VD: `"khoản 1"`, `"khoản 2"`.
-    - **point** (`KEYWORD`): Điểm (nếu có). VD: `"điểm a"`, `"điểm b"`.
-    - **type** (`KEYWORD`): Loại cấu trúc văn bản. VD: `"điều"`, `"khoản"`, `"điểm"`.
-    - **id** (`KEYWORD`): Mã định danh duy nhất của đoạn văn bản.
-    - **parent_id** (`KEYWORD`): Mã định danh của cấu trúc cha.
-    - **parent_type** (`KEYWORD`): Loại cấu trúc cha. VD: `"chương"`, `"điều"`, `"khoản"`.
-    - **law_ref** (`KEYWORD`): Tham chiếu đầy đủ của văn bản.
-    - **category** (`KEYWORD`): Danh mục. VD: `"law"`.
+    - **law_name** (`TEXT`): Tên đầy đủ của văn bản pháp luật. VD: "luật xuất nhập cảnh", "thông tư số 04/2016/TT-BNG".
+    - **law_code** (`KEYWORD`): Mã số văn bản. VD: "04/2016/TT-BNG".
+    - **promulgation_date** (`KEYWORD`): Ngày ban hành. VD: "30 tháng 6 năm 2016".
+    - **effective_date** (`KEYWORD`): Ngày có hiệu lực. VD: "01 tháng 8 năm 2016".
+    - **promulgator** (`TEXT`): Cơ quan ban hành. VD: "Bộ Ngoại giao", "Chính phủ".
+    - **law_type** (`KEYWORD`): Loại văn bản. VD: "thông tư", "nghị định", "luật".
+    - **chapter** (`KEYWORD`): Chương của văn bản. VD: "chương i", "chương ii".
+    - **article** (`KEYWORD`): Điều cụ thể. VD: "điều 1", "điều 10".
+    - **clause** (`KEYWORD`): Khoản trong điều. VD: "khoản 1", "khoản 2".
+    - **point** (`KEYWORD`): Điểm trong khoản. VD: "điểm a", "điểm b".
+    - **category** (`KEYWORD`): Danh mục phân loại. Mặc định là "law".
 """
+
 
 
 FILTER_PROMPT_FROM = """
@@ -114,12 +121,12 @@ Vui lòng tuân thủ các quy tắc sau:
 9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
 Giải thích các trường quan trọng:
-    - **form_code** (`KEYWORD`): Mã số biểu mẫu/giấy tờ. VD: `"CT01"`, `"TK02"`.
-    - **form_name** (`KEYWORD`): Tên đầy đủ của biểu mẫu. VD: `"tờ khai thay đổi thông tin cư trú"`.
-    - **field_no** (`KEYWORD`): Số thứ tự của trường trong biểu mẫu. VD: `"1"`, `"2"`, `"3"`.
-    - **field_name** (`KEYWORD`): Tên của trường thông tin. VD: `"họ, chữ đệm và tên"`, `"ngày, tháng, năm sinh"`.
-    - **chunk_type** (`KEYWORD`): Loại nội dung. VD: `"hướng_dẫn_điền"`, `"yêu_cầu"`, `"ghi_chú"`.
-    - **category** (`KEYWORD`): Danh mục tài liệu. VD: `"form"`, `"document"`.
+- **form_code** (`KEYWORD`): Mã số biểu mẫu/giấy tờ. VD: "CT01", "CT02".
+- **form_name** (`TEXT`): Tên đầy đủ của biểu mẫu. VD: "tờ khai thay đổi thông tin cư trú".
+- **field_no** (`KEYWORD`): Số thứ tự của trường trong biểu mẫu. VD: "1", "2", "3".
+- **field_name** (`TEXT`): Tên của trường thông tin. VD: "họ, chữ đệm và tên", "ngày, tháng, năm sinh".
+- **chunk_type** (`KEYWORD`): Loại nội dung. VD: "hướng_dẫn_điền", "yêu_cầu", "ghi_chú".
+- **category** (`KEYWORD`): Danh mục tài liệu. VD: "form", "document".
 """
 
 
@@ -136,10 +143,8 @@ Vui lòng tuân thủ các quy tắc sau:
 8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
 9. Tất cả giá trị được sinh ra phải là chữ thường (lowercase).
 10. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
-
 Giải thích các trường quan trọng:
-    - **term** (`KEYWORD`): Thuật ngữ cần tra cứu. VD: `"nơi thường trú"`, `"nơi tạm trú"`, `"cư trú hợp pháp"`.
-    - **content** (`TEXT`): Nội dung định nghĩa của thuật ngữ (có thể tìm kiếm full-text). VD: tìm kiếm các thuật ngữ có chứa từ "đăng ký" hoặc "sinh sống".
+    - **term** (`TEXT`): Thuật ngữ cần tra cứu. VD: `"nơi thường trú"`, `"nơi tạm trú"`, `"cư trú hợp pháp"`.
     - **category** (`KEYWORD`): Danh mục thuật ngữ. VD: `"term"`, `"definition"`, `"legal_term"`.
 
 Lưu ý đặc biệt:
@@ -164,18 +169,73 @@ Vui lòng tuân thủ các quy tắc sau:
 9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
 Giải thích các trường quan trọng:
-    - **code** (`KEYWORD`): Mã số mẫu văn bản. VD: `"CT01"`, `"TK02"`.
+    - **code** (`KEYWORD`): Mã số mẫu văn bản. VD: `"CT01"`, `"CT02"`.
     - **name** (`KEYWORD`): Tên đầy đủ của mẫu văn bản. VD: `"tờ khai thay đổi thông tin cư trú"`.
     - **description** (`TEXT`): Mô tả chi tiết về mẫu văn bản.
     - **procedures** (`TEXT`): Các thủ tục liên quan đến mẫu văn bản.
     - **category** (`KEYWORD`): Danh mục tài liệu. VD: `"templates"`.
 """
 # FORMATTED_INDEXES_
-FORMATTED_INDEXES_PROCEDURE = '- competent_authority - KEYWORD\n- decision_number - KEYWORD\n- implementing_agency - KEYWORD\n- application_receiving_address - KEYWORD\n- coordinating_agency - KEYWORD\n- implementation_subject - KEYWORD\n- implementation_result - KEYWORD\n- procedure_name - KEYWORD\n- category - KEYWORD\n- source_section - KEYWORD\n- procedure_code - KEYWORD\n- procedure_type - KEYWORD\n- field - KEYWORD\n- content_type - KEYWORD\n- table_title - KEYWORD\n- authorized_agency - KEYWORD\n- implementation_level - KEYWORD'
-FORMATTED_INDEXES_LEGAL= '- type - KEYWORD\n- point - KEYWORD\n- section - KEYWORD\n- law_name - KEYWORD\n- law_type - KEYWORD\n- promulgator - KEYWORD\n- category - KEYWORD\n- promulgation_date - KEYWORD\n- clause - KEYWORD\n- chapter - KEYWORD\n- law_ref - KEYWORD\n- article - KEYWORD\n- parent_id - KEYWORD\n- effective_date - KEYWORD\n- id - KEYWORD\n- law_code - KEYWORD\n- parent_type - KEYWORD'
-FORMATTED_INDEXES_FROM = '- form_code - KEYWORD\n- field_name - KEYWORD\n- chunk_type - KEYWORD\n- form_name - KEYWORD\n- category - KEYWORD\n- field_no - KEYWORD'
-FORMATTED_INDEXES_TERM = '- content - TEXT\n- category - KEYWORD\n- term - KEYWORD'
-FORMATTED_INDEXES_TEMPLATE = '- code - KEYWORD\n- name - KEYWORD\n- description - TEXT\n- procedures - TEXT\n- category - KEYWORD'
+FORMATTED_INDEXES_PROCEDURE = '''\
+- competent_authority - TEXT
+- decision_number - KEYWORD
+- implementing_agency - TEXT
+- application_receiving_address - TEXT
+- coordinating_agency - TEXT
+- implementation_subject - TEXT
+- implementation_result - TEXT
+- procedure_name - TEXT
+- category - KEYWORD
+- source_section - TEXT
+- procedure_code - KEYWORD
+- procedure_type - KEYWORD
+- field - KEYWORD
+- content_type - KEYWORD
+- table_title - TEXT
+- authorized_agency - TEXT
+- implementation_level - KEYWORD'''
+
+
+
+FORMATTED_INDEXES_LEGAL = '''\
+- type - KEYWORD
+- point - KEYWORD
+- section - KEYWORD
+- law_name - TEXT
+- law_type - KEYWORD
+- promulgator - TEXT
+- category - KEYWORD
+- promulgation_date - KEYWORD
+- clause - KEYWORD
+- chapter - KEYWORD
+- law_ref - KEYWORD
+- article - KEYWORD
+- parent_id - KEYWORD
+- effective_date - KEYWORD
+- id - KEYWORD
+- law_code - KEYWORD
+- parent_type - KEYWORD'''
+
+FORMATTED_INDEXES_FORM = """
+- form_code - KEYWORD
+- form_name - TEXT
+- field_no - KEYWORD
+- field_name - TEXT
+- chunk_type - KEYWORD
+- category - KEYWORD
+"""
+
+FORMATTED_INDEXES_TERM = """
+- category - KEYWORD
+- term - TEXT
+"""
+FORMATTED_INDEXES_TEMPLATE = """
+- code - KEYWORD
+- name - KEYWORD
+- description - TEXT
+- procedures - TEXT
+- category - KEYWORD
+"""
 
 
 def automate_filtering(user_query, formatted_indexes, filter_prompt):
@@ -195,6 +255,10 @@ def automate_filtering(user_query, formatted_indexes, filter_prompt):
 def search_qdrant(collection_name, query_embedding, query, limit=5):
     # if ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]
     print("###" + query + "###")
+    print("###" + query + "###")
+    print("###" + query + "###")
+    print("###" + query + "###")
+    print("###" + query + "###")
 
 
 
@@ -206,7 +270,7 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
         formatted_indexes = FORMATTED_INDEXES_LEGAL
     elif collection_name == "form_chunks":
         filter_prompt = FILTER_PROMPT_FROM
-        formatted_indexes = FORMATTED_INDEXES_FROM
+        formatted_indexes = FORMATTED_INDEXES_FORM
     elif collection_name == "term_chunks":
         filter_prompt = FILTER_PROMPT_TERM
         formatted_indexes = FORMATTED_INDEXES_TERM
@@ -222,24 +286,38 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
 
     filter_condition = automate_filtering(user_query = query, formatted_indexes= formatted_indexes, filter_prompt= filter_prompt)
     
-    filter_result = qdrant_client.query_points(
-        collection_name=collection_name,
-        query=query_embedding,
-        query_filter = filter_condition,
-        limit= limit,
-        with_payload=True, # Trả về payload
-        with_vectors=False # Không trả về vector
-    ).points
+    print("*###" + "_"*50 + "###*")
+    print(filter_condition )
+    print("###" + "_"*50 + "###")
+    
 
-    if filter_condition is not None and len(filter_result) == 0:
+    try:
+        filter_result = qdrant_client.query_points(
+            collection_name=collection_name,
+            query=query_embedding,
+            query_filter=filter_condition,
+            limit=limit,
+            with_payload=True,  # Trả về payload
+            with_vectors=False  # Không trả về vector
+        ).points
+
+        if filter_condition is not None and len(filter_result) == 0:
+            vector_search_results = qdrant_client.search(
+                collection_name=collection_name,
+                query_vector=query_embedding,
+                limit=limit,
+                with_payload=True
+            )
+            return vector_search_results, filter_condition
+        else:
+            return filter_result, filter_condition
+
+    except Exception as e:
+        # Nếu query_points bị lỗi, fallback sang search
         vector_search_results = qdrant_client.search(
-                   collection_name=collection_name,
-                    query_vector=query_embedding,
-                    limit=limit,
-                    with_payload=True
-                )
-        
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=limit,
+            with_payload=True
+        )
         return vector_search_results, filter_condition
-    else:
-        return filter_result, filter_condition
-    # return  , filter_condition

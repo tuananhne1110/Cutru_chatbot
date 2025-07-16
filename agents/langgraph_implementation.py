@@ -128,10 +128,8 @@ class RAGNodes:
         for collection in collections:
             # TODO: Nếu search_qdrant có async, chuyển sang await
             results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 8)  
-            logger.info(f"[LangGraph] DEBUG: filter_condition: {filter_condition}")
             docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
-            
-            # logger.info(f"[LangGraph] DEBUG: Docs: {docs}")
+            logger.info(f'filter_condition: {filter_condition}')
             all_docs.extend(docs)
         if all_docs:
             reranker = get_reranker()
@@ -160,7 +158,12 @@ class RAGNodes:
         for i, doc in enumerate(docs[:3]):
             logger.info(f"[LangGraph] DEBUG: Doc {i}: {doc.metadata}")
         prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs], intent)
-        logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt[:500]: {prompt[:500]}")
+        logger.info("__"*30)
+
+        logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt: {prompt}")
+        logger.info("__"*30)
+
+
         state["prompt"] = prompt  # Store prompt for streaming
 
         # Call LLM to generate answer
@@ -407,3 +410,38 @@ def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
     for step, t in result["processing_time"].items():
         print(f"{step}: {t:.4f} giây")
     return result
+
+# # ============================================================================
+# # EXAMPLE USAGE
+# # ============================================================================
+
+# async def example_usage():
+#     """Example usage của LangGraph workflow"""
+    
+#     # Sample data
+#     question = "Tôi muốn hỏi về thủ tục đăng ký thường trú"
+#     messages = [
+#         {"role": "user", "content": "Xin chào"},
+#         {"role": "assistant", "content": "Chào bạn! Tôi có thể giúp gì cho bạn?"}
+#     ]
+#     session_id = "test-session-123"
+    
+#     # Create initial state
+#     initial_state = create_initial_state(question, messages, session_id)
+    
+#     # Run workflow
+#     config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
+#     result = await rag_workflow.ainvoke(initial_state, config=config)
+    
+#     # Extract results
+#     results = extract_results_from_state(result)
+#     print("=== LangGraph RAG Results ===")
+#     print(f"Answer: {results['answer']}")
+#     print(f"Intent: {results['intent']}")
+#     print(f"Confidence: {results['confidence']}")
+#     print(f"Sources: {len(results['sources'])}")
+#     print(f"Processing time: {results['processing_time']}")
+
+# if __name__ == "__main__":
+#     import asyncio
+#     asyncio.run(example_usage()) 
