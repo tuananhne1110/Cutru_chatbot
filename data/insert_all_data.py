@@ -2,9 +2,10 @@ from supabase import create_client, Client
 import json
 import re
 from datetime import datetime
+import os
 
-url = "https://rjrqtogyzmgyqvryxfyk.supabase.co"
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqcnF0b2d5em1neXF2cnl4ZnlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MDcyNTcsImV4cCI6MjA2NjQ4MzI1N30.QjnPfVS7NbMTqe4z80X6q2MVA0z3iM3xsLzB71uEDNQ"
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(url, key)
 
