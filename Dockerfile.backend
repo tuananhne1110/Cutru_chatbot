@@ -8,8 +8,7 @@ COPY requirements.txt requirements-langgraph.txt ./
 
 # Cài gói vào thư mục riêng
 RUN pip install --upgrade pip && \
-    pip install --prefix=/install -r requirements.txt && \
-    pip install --prefix=/install -r requirements-langgraph.txt
+    pip install --prefix=/install -r requirements.txt
 
 # Copy toàn bộ mã nguồn
 COPY . .
