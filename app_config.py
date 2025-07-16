@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
-import pickle
 from qdrant_client import QdrantClient
 from supabase import create_client, Client
 from typing import Optional

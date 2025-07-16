@@ -6,7 +6,6 @@ Cài đặt dependencies và test reranker
 
 import subprocess
 import sys
-import os
 
 def install_dependencies():
     """Cài đặt dependencies cần thiết cho BGE reranker"""

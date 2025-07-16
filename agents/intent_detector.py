@@ -1,6 +1,6 @@
 import re
 import logging
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from enum import Enum
 from .prompt_templates import prompt_templates, CategoryType
 

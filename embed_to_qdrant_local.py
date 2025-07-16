@@ -1,10 +1,8 @@
 import json
-import os
-import pickle
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType
+from qdrant_client.models import Distance, VectorParams, PointStruct
 from app_config import embedding_model
 from app_config import qdrant_client as client
+
 # 1. Đường dẫn các file chunk
 json_files = [
     'chunking/output_json/form_chunks.json',

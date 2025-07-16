@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import logging
 from .prompt_templates import prompt_templates, CategoryType
 from .intent_detector import IntentType, intent_detector
