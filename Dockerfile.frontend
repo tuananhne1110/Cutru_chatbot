@@ -16,6 +16,9 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
+# Install curl for health check
+RUN apk add --no-cache curl
+
 RUN npm install -g serve
 
 COPY --from=builder /app/frontend/build ./build
@@ -24,4 +27,9 @@ RUN chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
+
 CMD ["serve", "-s", "build", "--no-clipboard", "-l", "3000"]
