@@ -4,7 +4,7 @@ FROM python:3.10.9-slim-bullseye as builder
 WORKDIR /app
 
 # Copy requirements
-COPY requirements.txt requirements-langgraph.txt ./
+COPY requirements.txt ./
 
 # Cài gói vào thư mục riêng
 RUN pip install --upgrade pip && \
