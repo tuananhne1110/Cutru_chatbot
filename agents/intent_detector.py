@@ -149,8 +149,11 @@ class TextUtils:
 
 
 class IntentDetector:
-    def __init__(self, service_name='bedrock-runtime', model_id = "us.meta.llama4-scout-17b-instruct-v1:0"):
-        self.bedrock_runtime_client = boto3.client(service_name=service_name)
+    def __init__(self, 
+                service_name='bedrock-runtime', 
+                model_id = "us.meta.llama4-scout-17b-instruct-v1:0", 
+                region_name = "us-east-1"):
+        self.bedrock_runtime_client = boto3.client(service_name=service_name, region_name = region_name)
         self.model_id = model_id
     
     def detect_intent(self, query: str) -> List[Tuple[IntentType, str]]:
