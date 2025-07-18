@@ -1,8 +1,7 @@
 import torch
-from typing import List, Dict, Tuple
+from typing import List, Dict
 import time
 import logging
-import os
 from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)

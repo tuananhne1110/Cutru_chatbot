@@ -1,12 +1,8 @@
 import os
 import sys
 import logging
-import asyncio
-from typing import Dict, List, Optional, Union, Any, Generator
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import AWS Bedrock client
-from aws_bedrock import ModelClient, ClaudeConfig, LlamaConfig, Message, MessageContent, ClaudeHandler, LlamaHandler
+from aws_bedrock import ModelClient, ClaudeConfig, LlamaConfig, ClaudeHandler, LlamaHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

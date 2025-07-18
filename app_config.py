@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
-import pickle
 from qdrant_client import QdrantClient
 from supabase import create_client, Client
 from typing import Optional
@@ -11,21 +10,13 @@ load_dotenv()
 # Load env
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-QDRANT_PATH = os.getenv("QDRANT_PATH", "qdrant_client.pkl")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# AWS Bedrock Configuration
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
 # Initialization model embedding
 embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
 
-# Initialization QDrant client
 qdrant_client = QdrantClient(
-    host=os.getenv("QDRANT_HOST", "qdrant"),
-    port=int(os.getenv("QDRANT_PORT", 6333))
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
 )
 
 # Initialization Supabase client

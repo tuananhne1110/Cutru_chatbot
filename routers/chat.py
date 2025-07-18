@@ -1,8 +1,4 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
-from datetime import datetime
-import uuid
-import logging
 
 router = APIRouter(prefix="/chat", tags=["Chat (Deprecated)"])
 
