@@ -397,37 +397,3 @@ def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
     for step, t in result["processing_time"].items():
         print(f"{step}: {t:.4f} giây")
     return result
-
-# # ============================================================================
-# # EXAMPLE USAGE
-# # ============================================================================
-
-# async def example_usage():
-#     """Example usage của LangGraph workflow"""
-    
-#     # Sample data
-#     question = "Tôi muốn hỏi về thủ tục đăng ký tạm trú"
-#     messages = [
-#         {"role": "user", "content": "Xin chào"},
-#         {"role": "assistant", "content": "Chào bạn! Tôi có thể giúp gì cho bạn?"}
-#     ]
-#     session_id = "test-session-123"
-    
-#     # Create initial state
-#     initial_state = create_initial_state(question, messages, session_id)
-    
-#     # Run workflow
-#     config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
-#     result = await rag_workflow.ainvoke(initial_state, config=config)
-    
-#     # Extract results
-#     results = extract_results_from_state(result)
-#     print("=== LangGraph RAG Results ===")
-#     print(f"Answer: {results['answer']}")
-#     print(f"Intent: {results['intent']}")
-#     print(f"Sources: {len(results['sources'])}")
-#     print(f"Processing time: {results['processing_time']}")
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(example_usage()) 
