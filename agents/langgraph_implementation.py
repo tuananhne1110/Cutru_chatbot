@@ -3,7 +3,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.documents import Document
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
 import logging
 import time
@@ -11,9 +10,14 @@ from langchain_core.runnables import RunnableConfig
 from typing import cast
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+# import os
+# import sys
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import existing components
+# from agents.intent_detector import intent_detector, IntentType
 from agents.intent_detector import intent_detector, IntentType
+
 from agents.query_rewriter import QueryRewriter
 from agents.context_manager import context_manager
 from agents.prompt_manager import prompt_manager
@@ -35,7 +39,6 @@ class ChatState(TypedDict):
     question: str
     session_id: str
     intent: Optional[IntentType]
-    confidence: Optional[float]
     context_docs: List[Document]
     rewritten_query: Optional[str]
     sources: List[Dict[str, Any]]
@@ -71,30 +74,17 @@ class RAGNodes:
         
     async def set_intent(self, state: ChatState) -> ChatState:
         question = state["question"]
-        intent, metadata = self.intent_detector.detect_intent(question)
+        # intent, metadata = self.intent_detector.detect_intent(question)
+        intent = self.intent_detector.detect_intent(question)
         state["intent"] = intent
-        state["confidence"] = metadata.get("confidence", 0.0)
         return state
-    
-    def route_by_intent(self, state: ChatState) -> str:
-        intent = state["intent"]
-        if intent is None:
-            return "general_search"
-        if intent.value == "law":
-            return "law_search"
-        elif intent.value == "form":
-            return "form_search"
-        elif intent.value == "procedure":
-            return "procedure_search"
-        else:
-            return "general_search"
+
     
     async def rewrite_query_with_context(self, state: ChatState) -> ChatState:
         """Rewrite query với conversation context"""
         start_time = time.time()
         question = state["question"]
         messages = state["messages"]
-        # Convert List[BaseMessage] to List[Dict] for context_manager
         messages_dict = []
         for m in messages:
             if hasattr(m, 'type') and hasattr(m, 'content'):
@@ -117,16 +107,17 @@ class RAGNodes:
         start_time = time.time()
         query = state.get("rewritten_query") or state["question"] or ""
         intent = state["intent"]
-        confidence = state["confidence"] if state["confidence"] is not None else 0.0
         if intent is None:
             raise ValueError("Intent must not be None in retrieve_context")
-        collections = intent_detector.get_search_collections(intent, str(confidence))
+        collections = intent_detector.get_search_collections(intent)
         # Ẩn toàn bộ log retrieval
         loop = asyncio.get_running_loop()
         embedding = await loop.run_in_executor(self._executor, get_embedding, query)
         all_docs = []
         for collection in collections:
-            # TODO: Nếu search_qdrant có async, chuyển sang await
+            if collection == "general_chunks":
+                continue
+
             results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 8)  
             docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
             logger.info(f'filter_condition: {filter_condition}')
@@ -157,7 +148,7 @@ class RAGNodes:
         logger.info(f"[LangGraph] DEBUG: Sắp tạo prompt với question: {question}, số docs: {len(docs)}, intent: {intent}")
         for i, doc in enumerate(docs[:3]):
             logger.info(f"[LangGraph] DEBUG: Doc {i}: {doc.metadata}")
-        prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs], intent)
+        prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs])
         logger.info("__"*30)
 
         logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt: {prompt}")
@@ -169,8 +160,6 @@ class RAGNodes:
         # Call LLM to generate answer
         try:
             from services.llm_service import call_llm_stream
-            logger.info(f"[LangGraph] Sắp gọi call_llm_stream với prompt[:100]: {prompt[:100]}")
-            
             answer_chunks = []
             for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, "llama"))):
                 answer_chunks.append(chunk)
@@ -383,7 +372,6 @@ def create_initial_state(question: str, messages: List[Dict], session_id: str) -
         "question": question,
         "session_id": session_id,
         "intent": None,
-        "confidence": None,
         "context_docs": [],
         "rewritten_query": None,
         "sources": [],
@@ -401,7 +389,6 @@ def extract_results_from_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "answer": state.get("answer", ""),
         "sources": state.get("sources", []),
         "intent": state.get("intent"),
-        "confidence": state.get("confidence"),
         "processing_time": state.get("processing_time", {}),
         "error": state.get("error")
     }

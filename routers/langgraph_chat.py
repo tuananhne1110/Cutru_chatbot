@@ -67,7 +67,6 @@ async def langgraph_chat_stream(request: ChatRequest):
             yield " " * 2048 + "\n"
             for chunk in call_llm_stream(prompt, model="llama"):
                 if chunk:
-                    logger.info(f"[stream_llm] Yield chunk: {repr(chunk[:100])}")
                     yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
             # Gửi sources cho frontend
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"

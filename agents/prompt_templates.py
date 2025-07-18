@@ -18,118 +18,21 @@ class PromptTemplates:
     
     def __init__(self):
         # Template base chung cho tất cả categories
-        self.base_template = """Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
+        self.base_template = """
+        Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
+        VAI TRÒ VÀ TRÁCH NHIỆM:
+        - Trả lời chính xác, ngắn gọn, đúng trọng tâm theo câu hỏi bên dưới
+        - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO để trả lời. Không suy đoán ngoài phạm vi
 
-VAI TRÒ VÀ TRÁCH NHIỆM:
-- Trả lời chính xác, ngắn gọn, đúng trọng tâm theo câu hỏi bên dưới
-- Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO. Không suy đoán ngoài phạm vi
-- Nếu không đủ thông tin để kết luận: nêu rõ và yêu cầu người dùng cung cấp thêm
+        THÔNG TIN THAM KHẢO:
+        {context}
 
-THÔNG TIN THAM KHẢO:
-{context}
+        CÂU HỎI: {question}
 
-CÂU HỎI: {question}
+        TRẢ LỜI:"""
 
-{category_guidance}
-
-TRẢ LỜI:"""
-
-        # Hướng dẫn đặc thù cho từng category
-        self.category_guidance = {
-            CategoryType.LAW: self._get_law_guidance(),
-            CategoryType.FORM: self._get_form_guidance(),
-            CategoryType.TERM: self._get_term_guidance(),
-            CategoryType.PROCEDURE: self._get_procedure_guidance(),
-            CategoryType.TEMPLATE: self._get_template_guidance(),
-            CategoryType.GENERAL: self._get_general_guidance()
-        }
-    
-    def _get_law_guidance(self) -> str:
-        """Hướng dẫn đặc thù cho câu hỏi về pháp luật"""
-        return """HƯỚNG DẪN TRẢ LỜI:
-1. Phân tích câu hỏi để xác định vấn đề pháp lý cụ thể
-2. Tìm kiếm và trích dẫn các quy định pháp luật liên quan
-3. Giải thích rõ ràng nội dung và ý nghĩa của các quy định
-4. Đưa ra kết luận pháp lý dựa trên căn cứ pháp luật
-5. Nếu thông tin không đủ, hãy nêu rõ và yêu cầu bổ sung
-
-"""
-
-    def _get_form_guidance(self) -> str:
-        """Hướng dẫn đặc thù cho hướng dẫn điền biểu mẫu"""
-        return """HƯỚNG DẪN TRẢ LỜI:
-1. Xác định biểu mẫu cụ thể được hỏi (mã số, tên)
-2. Hướng dẫn từng bước điền biểu mẫu một cách chi tiết
-3. Giải thích ý nghĩa của từng mục cần khai
-4. Đưa ra ví dụ cụ thể và lưu ý quan trọng
-5. Hướng dẫn chuẩn bị hồ sơ kèm theo nếu cần
-
-LƯU Ý:
-- Hướng dẫn theo thứ tự các mục trong biểu mẫu
-- Giải thích rõ mục nào bắt buộc, mục nào tùy chọn
-- Đưa ra ví dụ cụ thể cho từng loại thông tin
-- Nêu rõ các lưu ý quan trọng để tránh sai sót
-- Hướng dẫn về giấy tờ kèm theo cần thiết"""
-
-    def _get_term_guidance(self) -> str:
-        """Hướng dẫn đặc thù cho câu hỏi về thuật ngữ, định nghĩa"""
-        return """HƯỚNG DẪN TRẢ LỜI:
-1. Phân tích câu hỏi để hiểu rõ nhu cầu của người dùng
-2. Tìm kiếm thông tin liên quan từ nguồn tham khảo
-3. Trả lời một cách toàn diện và dễ hiểu
-4. Đưa ra lời khuyên thực tế nếu cần
-5. Hướng dẫn các bước tiếp theo nếu thông tin chưa đủ
-
-LƯU Ý:
-- Trả lời rõ ràng, dễ hiểu và thực tế
-- Kết hợp thông tin pháp lý và hướng dẫn thực hành
-- Đưa ra lời khuyên phù hợp với tình huống cụ thể
-- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung"""
-
-    def _get_procedure_guidance(self) -> str:
-        """Hướng dẫn đặc thù cho thủ tục hành chính"""
-        return """HƯỚNG DẪN TRẢ LỜI:
-1. Xác định thủ tục hành chính cụ thể được hỏi
-2. Liệt kê các bước thực hiện theo thứ tự
-3. Giải thích chi tiết từng bước và yêu cầu cụ thể
-4. Đưa ra thời gian xử lý và phí tổn (nếu có)
-5. Hướng dẫn địa điểm nộp hồ sơ và liên hệ
-
-LƯU Ý:
-- Hướng dẫn theo trình tự thời gian: chuẩn bị → nộp → theo dõi → nhận kết quả
-- Nêu rõ thời gian xử lý và các mốc thời gian quan trọng
-- Giải thích các trường hợp đặc biệt và cách xử lý
-- Đưa ra thông tin liên hệ và hỗ trợ
-- Hướng dẫn cách theo dõi tiến độ xử lý"""
-
-    def _get_template_guidance(self) -> str:
-        """Hướng dẫn đặc thù cho biểu mẫu gốc"""
-        return """HƯỚNG DẪN:
-1. Giải thích ngắn gọn mục đích sử dụng biểu mẫu
-2. Liệt kê các thủ tục liên quan (nếu có)
-3. Nếu không tìm thấy, hướng dẫn cách liên hệ cơ quan chức năng
-
-LƯU Ý:
-- Không chèn link tải file vào nội dung trả lời
-- Nếu có file_url, frontend sẽ tự hiển thị nút tải về
-- Tập trung vào hướng dẫn sử dụng và thủ tục liên quan"""
-
-    def _get_general_guidance(self) -> str:
-        """Hướng dẫn chung cho các câu hỏi khác"""
-        return """HƯỚNG DẪN TRẢ LỜI:
-1. Phân tích câu hỏi để hiểu rõ nhu cầu của người dùng
-2. Tìm kiếm thông tin liên quan từ nguồn tham khảo
-3. Trả lời một cách toàn diện và dễ hiểu
-4. Đưa ra lời khuyên thực tế nếu cần
-5. Hướng dẫn các bước tiếp theo nếu thông tin chưa đủ
-
-LƯU Ý:
-- Trả lời rõ ràng, dễ hiểu và thực tế
-- Kết hợp thông tin pháp lý và hướng dẫn thực hành
-- Đưa ra lời khuyên phù hợp với tình huống cụ thể
-- Nếu cần thêm thông tin, hãy nêu rõ và hướng dẫn cách bổ sung"""
-
-    def get_prompt_by_category(self, category: CategoryType) -> str:
+       
+    def get_prompt_by_category(self) -> str:
         """
         Lấy prompt template theo category
         
@@ -139,60 +42,13 @@ LƯU Ý:
         Returns:
             str: Prompt template
         """
-        guidance = self.category_guidance.get(category, self.category_guidance[CategoryType.GENERAL])
+      
         return self.base_template.format(
             context="{context}",
             question="{question}",
-            category_guidance=guidance
         )
-    
-    def get_prompt_by_chunks(self, chunks: List[Dict]) -> str:
-        """
-        Tự động xác định category dựa trên chunks và trả về prompt phù hợp
-        
-        Args:
-            chunks: Danh sách chunks từ search
-            
-        Returns:
-            str: Prompt template phù hợp
-        """
-        if not chunks:
-            return self.get_prompt_by_category(CategoryType.GENERAL)
-        
-        # Phân tích chunks để xác định category chính
-        category_counts = {
-            CategoryType.LAW: 0,
-            CategoryType.FORM: 0,
-            CategoryType.TERM: 0,
-            CategoryType.PROCEDURE: 0,
-            CategoryType.TEMPLATE: 0
-        }
-        
-        for chunk in chunks:
-            chunk_category = chunk.get("category", "")
-            chunk_type = chunk.get("type", "")
-            
-            if chunk_category == "law" or chunk_type == "law":
-                category_counts[CategoryType.LAW] += 1
-            elif chunk_category == "form" or chunk_type == "form":
-                category_counts[CategoryType.FORM] += 1
-            elif chunk_category == "term" or chunk_type == "term":
-                category_counts[CategoryType.TERM] += 1
-            elif "procedure" in chunk_category.lower() or "procedure" in chunk_type.lower():
-                category_counts[CategoryType.PROCEDURE] += 1
-            elif chunk_category == "templates" or chunk_type == "templates":
-                category_counts[CategoryType.TEMPLATE] += 1
-        
-        # Xác định category có số lượng chunks cao nhất
-        dominant_category = max(category_counts.items(), key=lambda x: x[1])
-        
-        if dominant_category[1] > 0:
-            logger.info(f"Auto-detected category: {dominant_category[0].value} with {dominant_category[1]} chunks")
-            return self.get_prompt_by_category(dominant_category[0])
-        else:
-            return self.get_prompt_by_category(CategoryType.GENERAL)
-    
-    def format_context_by_category(self, chunks: List[Dict], category: CategoryType) -> str:
+
+    def format_context_by_category(self, chunks: List[Dict]) -> str:
         """
         Format context theo category để tối ưu prompt
         
@@ -209,7 +65,7 @@ LƯU Ý:
         context_parts = []
         
         for chunk in chunks:
-            if category == CategoryType.LAW:
+            if chunk['category'] == "law":
                 logger.info(f"check cateogty ======== : {CategoryType.LAW}")
 
                 # Format cho law chunks
@@ -232,7 +88,7 @@ LƯU Ý:
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
-            elif category == CategoryType.FORM:
+            elif chunk['category'] == "form":
                 logger.info(f"check cateogty ======== : {CategoryType.FORM}")
 
                 # Format cho form chunks
@@ -252,7 +108,7 @@ LƯU Ý:
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
-            elif category == CategoryType.TERM:
+            elif chunk['category'] == "term":
                 logger.info(f"check cateogty ======== : {CategoryType.TERM}")
 
                 # Format cho term chunks
@@ -269,7 +125,7 @@ LƯU Ý:
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
                 
-            elif category == CategoryType.PROCEDURE:
+            elif chunk['category'] == "procedure":
                 logger.info(f"check cateogty ======== : {CategoryType.PROCEDURE}")
 
                 # Format cho procedure chunks
@@ -292,7 +148,7 @@ LƯU Ý:
                 for k , value in chunk.items():
                     logger.info(f"key : {k} \nValue : {value}")
 
-            elif category == CategoryType.TEMPLATE:
+            elif chunk['category'] == "templates":
                 code = chunk.get("code", "")
                 name = chunk.get("name", "")
                 description = chunk.get("description", "")
@@ -303,13 +159,7 @@ LƯU Ý:
                 )
                 
             else:
-                # Format chung
-                source_info = f"[{chunk.get('category', 'unknown')} - {chunk.get('id', 'unknown')}]"
-                context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
-
-        oke = '\n\n'.join(context_parts)
-        logger.info(f"Thông tin cực kỳ quan trọng : {oke}")
-    
+                context_parts.append("================ Không cần tham khảo ở dòng này ================")
         return "\n\n".join(context_parts)
 
 # Singleton instance
