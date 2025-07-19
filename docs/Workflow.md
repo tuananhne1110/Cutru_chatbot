@@ -10,23 +10,28 @@ graph TD
   %% Dịch vụ phía sau
   B1 --> DB1["Postgres / Supabase"]
   B1 --> DB2["Qdrant Vector DB"]
-  B1 --> DB3["Supabase Storage"]
+  B1 --> DB3["Redis Cache"]
+  B1 --> DB4["Supabase Storage"]
 
   %% LangGraph Agent Pipeline
   B1 --> C1["LangGraph Agent Pipeline"]
 
   subgraph C1 ["LangGraph Agent Pipeline"]
     direction TB
-    C1A["Query Understanding & Classification"]
-    C1B["Query Optimization & Rewriting"]
-    C1C["RAG Execution (Search + LLM + Guard)"]
-    C1D["Memory Update + Response"]
+    C1A["Intent Detection"]
+    C1B["Semantic Cache Check"]
+    C1C["Guardrails Input"]
+    C1D["Query Rewriting"]
+    C1E["Semantic Retrieval"]
+    C1F["Answer Generation"]
+    C1G["Output Validation"]
+    C1H["Memory Update"]
     
-    C1A --> C1B --> C1C --> C1D
+    C1A --> C1B --> C1C --> C1D --> C1E --> C1F --> C1G --> C1H
   end
 
   %% Output
-  C1D --> D1["Stream Response to Frontend"] --> F1
+  C1H --> D1["Stream Response to Frontend"] --> F1
 ```
 
 ### 2. Mô tả chi tiết từng bước
@@ -37,8 +42,9 @@ graph TD
 - **Nhận kết quả trả về dạng streaming:**
   - Các chunk `"type": "chunk"` chứa nội dung trả lời.
   - Chunk `"type": "sources"` chứa metadata nguồn tham khảo (bao gồm cả file mẫu, link tải về...).
+  - Chunk `"type": "done"` báo hiệu kết thúc stream.
 - **Hiển thị:**
-  - Nội dung trả lời.
+  - Nội dung trả lời real-time từng chunk.
   - Nếu có file mẫu trong sources, **hiện nút tải về nổi bật** phía dưới.
   - Khi bấm "Hiện nguồn tham khảo", hiển thị đúng thông tin nguồn (luật hoặc biểu mẫu, có link tải nếu là mẫu).
 
@@ -46,39 +52,57 @@ graph TD
 - Nhận request, sinh `session_id` nếu chưa có, chuẩn hóa lịch sử hội thoại.
 - **LangGraph RAG Workflow:**
 
-#### Bước 1-2: Kiểm tra cache ban đầu
-1. **set_intent:** Phân loại intent (law, form, term, procedure, template, ambiguous).
-2. **semantic_cache_initial:** Kiểm tra cache semantic với câu hỏi gốc.
+#### Bước 1: Phân loại ý định (Intent Detection)
+- **set_intent:** Phân loại intent (law, form, term, procedure, ambiguous, general).
+- **Logic:** Sử dụng keyword-based detection với confidence scoring.
+- **Output:** Primary intent và danh sách tất cả intents có thể.
 
-#### Nhánh A: Cache Hit Ban Đầu (Trùng cache với câu hỏi gốc)
-**Khi tìm thấy câu hỏi gốc tương tự trong cache:**
-- **Lấy kết quả cache:** Trích xuất answer và sources từ cache
-- **Cập nhật metadata:** Ghi log cache hit, thời gian xử lý
-- **Stream kết quả:** Gửi cached answer và sources về frontend
-- **Bỏ qua tất cả các bước:** Không cần xử lý thêm
-- **Lưu lịch sử:** Vẫn lưu vào Supabase để tracking
+#### Bước 2: Kiểm tra semantic cache
+- **semantic_cache:** Kiểm tra cache semantic với câu hỏi gốc.
+- **Logic:** Tạo embedding của câu hỏi, so sánh với cache entries trong Redis.
+- **Threshold:** 0.85 similarity score.
+- **Nếu cache hit:** Trả ngay kết quả và sources, bỏ qua các bước sau.
 
-#### Nhánh B: Cache Miss Ban Đầu (Tiếp tục xử lý)
-**Khi không tìm thấy câu hỏi gốc trong cache:**
-3. **guardrails_input:** Kiểm duyệt an toàn đầu vào (LlamaGuard Input). Nếu vi phạm, trả về thông báo an toàn.
-4. **rewrite:** Làm sạch, paraphrase câu hỏi với context từ lịch sử hội thoại (rule-based + LLM nếu cần).
-5. **semantic_cache_rewrite:** Kiểm tra cache semantic với câu hỏi đã được rewrite.
+#### Bước 3: Kiểm duyệt an toàn đầu vào
+- **guardrails_input:** Kiểm duyệt an toàn đầu vào (LlamaGuard Input).
+- **Logic:** Sử dụng LlamaGuard 7B với policy từ `policy_input.yaml`.
+- **Nếu vi phạm:** Trả về thông báo an toàn, không xử lý tiếp.
 
-#### Nhánh B1: Cache Hit Sau Rewrite (Trùng cache với câu hỏi đã rewrite)
-**Khi tìm thấy câu hỏi đã rewrite tương tự trong cache:**
-- **Lấy kết quả cache:** Trích xuất answer và sources từ cache
-- **Cập nhật metadata:** Ghi log cache hit với rewritten query
-- **Stream kết quả:** Gửi cached answer và sources về frontend
-- **Bỏ qua các bước:** Không cần retrieve, generate, validate
-- **Lưu lịch sử:** Vẫn lưu vào Supabase để tracking
+#### Bước 4: Làm sạch & cải thiện câu hỏi
+- **rewrite:** Làm sạch, paraphrase câu hỏi với context từ lịch sử hội thoại.
+- **Logic:** Kết hợp rule-based cleaning và LLM paraphrase nếu cần.
+- **Context:** Sử dụng conversation history để hiểu ngữ cảnh.
 
-#### Nhánh B2: Cache Miss Sau Rewrite (Full processing)
-**Khi không tìm thấy câu hỏi đã rewrite trong cache:**
-6. **retrieve:** Tìm kiếm semantic trong các collection tương ứng (top 25).
-7. **generate:** Tạo prompt động phù hợp intent, chèn context và metadata.
-8. **validate:** Kiểm duyệt đầu ra (LlamaGuard Output).
-9. **update_memory:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
-10. **Cache kết quả:** Lưu kết quả mới vào semantic cache cho lần sau.
+#### Bước 5: Truy xuất thông tin semantic
+- **retrieve:** Tìm kiếm semantic trong các collection tương ứng.
+- **Logic:** 
+  - Dựa trên tất cả intents để chọn collections.
+  - Tìm kiếm top 50 candidates từ mỗi collection.
+  - Sử dụng BGE reranker để sắp xếp lại kết quả.
+  - Đặc biệt xử lý LAW intent: gom nhóm theo parent_id và merge chunks.
+- **Output:** Top 8 context documents.
+
+#### Bước 6: Tạo prompt động & sinh câu trả lời
+- **generate:** Tạo prompt động phù hợp intent, chèn context và metadata.
+- **Logic:**
+  - Chọn prompt template theo intent.
+  - Format context documents với metadata.
+  - Gọi AWS Bedrock (Llama 4 Scout 17B) để sinh câu trả lời.
+  - Stream kết quả về frontend từng chunk.
+- **Output:** Câu trả lời hoàn chỉnh và prompt để streaming.
+
+#### Bước 7: Kiểm duyệt đầu ra
+- **validate:** Kiểm duyệt đầu ra (LlamaGuard Output).
+- **Logic:** Sử dụng LlamaGuard 7B với policy từ `policy_output.yaml`.
+- **Nếu vi phạm:** Thay thế bằng thông báo an toàn.
+
+#### Bước 8: Cập nhật bộ nhớ & cache
+- **update_memory:** Lưu lại câu hỏi, câu trả lời, nguồn, intent, v.v. vào Supabase.
+- **Logic:**
+  - Cập nhật conversation history.
+  - Tạo context summary.
+  - Lưu metadata và processing time.
+- **Cache:** Lưu kết quả mới vào semantic cache cho lần sau.
 
 ### 3. Sơ Đồ Luồng Dữ Liệu Chi Tiết (Data Flow, LangGraph-based)
 
@@ -90,49 +114,132 @@ sequenceDiagram
     participant Q as Qdrant (Vector DB)
     participant LLM as AWS Bedrock (LLM)
     participant S as Supabase (PostgreSQL)
-    participant C as Cache Service
+    participant C as Redis Cache
     
     U->>B: POST /chat/stream (question + messages)
     B->>L: set_intent
-    L->>L: semantic_cache_initial (với câu hỏi gốc)
+    L->>L: semantic_cache (với câu hỏi gốc)
     L->>C: Check semantic cache với original query
     
-    alt Cache HIT Ban Đầu (Trùng cache với câu hỏi gốc)
+    alt Cache HIT (Trùng cache với câu hỏi gốc)
         C-->>L: Cached answer + sources
         L->>L: update_memory (lưu lịch sử)
         L->>S: Lưu chat history với cache flag
         L-->>B: Cached answer + sources
         B-->>U: Stream cached answer chunks + sources
-        Note over C: Cache hit với original query - Fastest response
+        Note over C: Cache hit - Fastest response
         
-    else Cache MISS Ban Đầu (Tiếp tục xử lý)
+    else Cache MISS (Tiếp tục xử lý)
         L->>L: guardrails_input
         L->>L: rewrite (với context từ lịch sử)
-        L->>L: semantic_cache_rewrite (với câu hỏi đã rewrite)
-        L->>C: Check semantic cache với rewritten query
-        
-        alt Cache HIT Sau Rewrite (Trùng cache với câu hỏi đã rewrite)
-            C-->>L: Cached answer + sources
-            L->>L: update_memory (lưu lịch sử)
-            L->>S: Lưu chat history với cache flag
-            L-->>B: Cached answer + sources
-            B-->>U: Stream cached answer chunks + sources
-            Note over C: Cache hit với rewritten query - Fast response
-            
-        else Cache MISS Sau Rewrite (Full processing)
-            L->>L: retrieve
-            L->>Q: Semantic search (4 collections)
-            Q-->>L: Top 25 candidates
-            L->>L: generate
-            L->>LLM: Generate answer (streaming)
-            LLM-->>L: Answer chunks
-            L->>L: validate
-            L->>L: update_memory
-            L->>S: Lưu lịch sử chat, log
-            L->>C: Cache kết quả mới
-            L-->>B: Trả answer + sources
-            B-->>U: Stream answer chunks + sources
-            Note over C: Cache miss - Full processing
-        end
+        L->>L: retrieve
+        L->>Q: Semantic search (4 collections, 50 candidates)
+        Q-->>L: Top candidates
+        L->>L: BGE reranking
+        L->>L: generate
+        L->>LLM: Generate answer (streaming)
+        LLM-->>L: Answer chunks
+        L->>L: validate
+        L->>L: update_memory
+        L->>S: Lưu lịch sử chat, log
+        L->>C: Cache kết quả mới
+        L-->>B: Trả answer + sources
+        B-->>U: Stream answer chunks + sources
+        Note over C: Cache miss - Full processing
     end
 ```
+
+### 4. Giải thích từng bước workflow
+
+#### **Bước 1: Intent Detection (Phân loại ý định)**
+- **Mục đích:** Xác định loại câu hỏi để chọn đúng nguồn dữ liệu và cách trả lời.
+- **Hoạt động:** Phân tích từ khóa trong câu hỏi, tính điểm confidence cho từng loại intent.
+- **Kết quả:** Primary intent và danh sách tất cả intents có thể để tìm kiếm toàn diện.
+
+#### **Bước 2: Semantic Cache Check (Kiểm tra cache)**
+- **Mục đích:** Tăng tốc độ phản hồi cho câu hỏi tương tự đã được trả lời trước đó.
+- **Hoạt động:** Tạo embedding của câu hỏi, so sánh với cache entries trong Redis.
+- **Kết quả:** Nếu tìm thấy câu hỏi tương tự (similarity ≥ 0.85), trả ngay kết quả cache.
+
+#### **Bước 3: Guardrails Input (Kiểm duyệt đầu vào)**
+- **Mục đích:** Đảm bảo câu hỏi không vi phạm chính sách an toàn.
+- **Hoạt động:** Sử dụng LlamaGuard để kiểm tra nội dung câu hỏi.
+- **Kết quả:** Chặn câu hỏi vi phạm và trả thông báo an toàn.
+
+#### **Bước 4: Query Rewriting (Làm sạch câu hỏi)**
+- **Mục đích:** Cải thiện câu hỏi để tăng độ chính xác khi tìm kiếm.
+- **Hoạt động:** Làm sạch câu hỏi, bổ sung context từ lịch sử hội thoại.
+- **Kết quả:** Câu hỏi đã được tối ưu hóa cho việc tìm kiếm.
+
+#### **Bước 5: Semantic Retrieval (Truy xuất thông tin)**
+- **Mục đích:** Tìm các tài liệu liên quan nhất để trả lời câu hỏi.
+- **Hoạt động:** 
+  - Tìm kiếm trong các collection tương ứng với intent.
+  - Lấy top 50 candidates từ mỗi collection.
+  - Sử dụng BGE reranker để sắp xếp lại theo độ phù hợp.
+  - Đặc biệt xử lý LAW intent: gom nhóm và merge chunks theo parent_id.
+- **Kết quả:** Top 8 context documents có độ phù hợp cao nhất.
+
+#### **Bước 6: Answer Generation (Sinh câu trả lời)**
+- **Mục đích:** Tạo câu trả lời chính xác và hữu ích dựa trên context.
+- **Hoạt động:**
+  - Tạo prompt động theo intent và context.
+  - Gọi LLM (Llama 4 Scout 17B) để sinh câu trả lời.
+  - Stream kết quả về frontend từng chunk.
+- **Kết quả:** Câu trả lời hoàn chỉnh và prompt để streaming.
+
+#### **Bước 7: Output Validation (Kiểm duyệt đầu ra)**
+- **Mục đích:** Đảm bảo câu trả lời không chứa nội dung nhạy cảm.
+- **Hoạt động:** Sử dụng LlamaGuard để kiểm tra nội dung trả lời.
+- **Kết quả:** Thay thế nội dung vi phạm bằng thông báo an toàn.
+
+#### **Bước 8: Memory Update (Cập nhật bộ nhớ)**
+- **Mục đích:** Lưu trữ thông tin để cải thiện trải nghiệm và phân tích.
+- **Hoạt động:**
+  - Cập nhật conversation history.
+  - Tạo context summary cho lần sau.
+  - Lưu metadata và thời gian xử lý từng bước.
+  - Cache kết quả mới cho lần sau.
+- **Kết quả:** Dữ liệu được lưu trữ để tracking và cải thiện hệ thống về sau.
+
+### 5. Tối ưu hóa Performance
+
+#### **Cache Strategy (Chiến lược cache)**
+- **Semantic Cache:** Lưu trữ kết quả dựa trên embedding similarity.
+- **Threshold:** 0.85 similarity score để đảm bảo chất lượng.
+- **TTL:** 1 giờ cho cache entries.
+- **Limit:** 1000 cached entries để tránh memory overflow.
+
+#### **Streaming Response (Trả lời streaming)**
+- **Server-Sent Events:** Sử dụng SSE để stream từng chunk về frontend.
+- **Real-time Display:** Frontend hiển thị nội dung ngay khi nhận được chunk.
+- **Buffer Management:** Xử lý buffer để đảm bảo smooth streaming.
+
+#### **Parallel Processing (Xử lý song song)**
+- **Async/Await:** Sử dụng async programming để tối ưu I/O operations.
+- **ThreadPoolExecutor:** Xử lý CPU-intensive tasks trong thread pool.
+- **Concurrent Retrieval:** Tìm kiếm song song trong nhiều collections.
+
+### 6. Error Handling & Fallbacks
+
+#### **Graceful Degradation (Giảm cấp độ mượt mà)**
+- **Cache Failures:** Tiếp tục xử lý bình thường nếu cache không available.
+- **LLM Failures:** Trả về thông báo lỗi thân thiện.
+- **Vector DB Failures:** Fallback về keyword search.
+
+#### **Retry Logic (Logic thử lại)**
+- **Network Issues:** Tự động retry cho network failures.
+- **Rate Limiting:** Exponential backoff cho API rate limits.
+- **Timeout Handling:** Timeout cho các external services.
+
+### 7. Monitoring & Observability
+
+#### **Performance Tracking (Theo dõi hiệu suất)**
+- **Step Timing:** Đo thời gian xử lý từng bước trong workflow.
+- **Cache Metrics:** Hit rate, miss rate, response time.
+- **LLM Metrics:** Token usage, response time, error rate.
+
+#### **Error Monitoring (Theo dõi lỗi)**
+- **Exception Logging:** Log chi tiết các exceptions.
+- **Error Classification:** Phân loại lỗi theo type và severity.
+- **Alert System:** Alert cho critical errors.

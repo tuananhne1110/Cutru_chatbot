@@ -10,40 +10,41 @@ Hệ thống RAG (Retrieval-Augmented Generation) chuyên về pháp luật Vi�
 - [Cấu Trúc Thư Mục](#-cấu-trúc-thư-mục)
 - [AI Agents & Intelligence](#-ai-agents--intelligence)
 - [Pipeline Xử Lý](#-pipeline-xử-lý)
-- [BGE Reranker - Tính Năng Mới](#-bge-reranker---tính-năng-mới)
 - [Cài Đặt & Triển Khai](#-cài-đặt--triển-khai)
 - [API Endpoints](#-api-endpoints)
 - [Guardrails & Bảo Mật](#-guardrails--bảo-mật)
 - [Monitoring & Logging](#-monitoring--logging)
 - [Troubleshooting](#-troubleshooting)
-- [🛠️ Workflow Chi Tiết Toàn Bộ Hệ Thống](#-workflow-chi-tiết-toàn-bộ-hệ-thống)
 
 ## 🎯 Tổng Quan
 
 Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 
-- **Backend**: FastAPI với pipeline RAG tối ưu và Intent Detection
+- **Backend**: FastAPI với LangGraph workflow tối ưu và Intent Detection
 - **Frontend**: React 18 với UI/UX hiện đại
 - **Vector Database**: Qdrant cho semantic search với 4 collections
 - **Database**: Supabase cho lưu trữ dữ liệu và lịch sử
-- **AI Models**: AWS Bedrock (Llama 3.1 8B) cho LLM, Vietnamese PhoBERT cho embedding
-- **BGE Reranker**: Cross-encoder reranking để cải thiện chất lượng kết quả ⭐ NEW
-- **Guardrails**: 4 lớp bảo vệ multi-layer defense-in-depth
+- **Cache**: Redis cho semantic caching và performance optimization
+- **AI Models**: AWS Bedrock (Llama 4 Scout 17B) cho LLM, Vietnamese PhoBERT cho embedding
+- **BGE Reranker**: Cross-encoder reranking để cải thiện chất lượng kết quả
+- **Guardrails**: 2 lớp bảo vệ với LlamaGuard
 - **Intent Detection**: Phân loại thông minh câu hỏi theo 4 loại dữ liệu
 
 ### 🚀 Tính Năng Chính
 
 - ✅ **4 Loại Dữ Liệu**: Laws, Forms, Terms, Procedures
+- ✅ **LangGraph Workflow**: State management và orchestration tối ưu
 - ✅ **Intent Detection**: Phân loại thông minh câu hỏi
 - ✅ **RAG Pipeline**: Tìm kiếm semantic + sinh câu trả lời
-- ✅ **BGE Reranker**: Cross-encoder reranking ⭐ NEW
+- ✅ **BGE Reranker**: Cross-encoder reranking
 - ✅ **Query Rewriter**: Làm sạch và tối ưu câu hỏi
-- ✅ **Guardrails**: 4 lớp bảo vệ an toàn
+- ✅ **Guardrails**: 2 lớp bảo vệ an toàn
 - ✅ **Streaming Response**: Trả lời real-time
 - ✅ **Chat History**: Lưu trữ lịch sử hội thoại
 - ✅ **Dynamic Prompts**: Prompt chuyên biệt theo loại dữ liệu
 - ✅ **Multi-collection Search**: Tìm kiếm thông minh theo intent
-- ✅ **Docker Deployment**: Triển khai dễ dàng
+- ✅ **Semantic Caching**: Redis-based caching cho performance
+- ✅ **Docker Deployment**: Triển khai dễ dàng với Docker Compose
 
 ## 📊 4 Loại Dữ Liệu Chính
 
@@ -85,12 +86,12 @@ Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │
                                 ▼
-                       ┌─────────────────┐
-                       │   Qdrant        │
-                       │   Vector DB     │
-                       │   4 Collections │
-                       │   Port: 6333    │
-                       └─────────────────┘
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   Qdrant        │    │   Redis         │
+                       │   Vector DB     │    │   Cache         │
+                       │   4 Collections │    │   Semantic      │
+                       │   Port: 6333    │    │   Port: 6379    │
+                       └─────────────────┘    └─────────────────┘
 ```
 
 ### 🔄 Luồng Dữ Liệu
@@ -103,13 +104,17 @@ User Query → 🛡️ Guardrails → 🧠 Intent Detection → 🔄 Query Rewri
 ## 📁 Cấu Trúc Thư Mục
 
 ```
-phapluat/
+Cutru_chatbot/
 ├── 📁 agents/                    # AI Agents & Intelligence
 │   ├── intent_detector.py       # Phân loại intent thông minh
 │   ├── prompt_templates.py      # Prompt templates chuyên biệt
 │   ├── prompt_manager.py        # Quản lý prompt động
-│   ├── guardrails.py            # 4 lớp bảo vệ an toàn
-│   └── query_rewriter.py        # Làm sạch & tối ưu câu hỏi
+│   ├── guardrails.py            # 2 lớp bảo vệ an toàn
+│   ├── query_rewriter.py        # Làm sạch & tối ưu câu hỏi
+│   ├── context_manager.py       # Quản lý context hội thoại
+│   ├── langgraph_implementation.py # LangGraph workflow chính
+│   ├── policy_input.yaml        # LlamaGuard input policy
+│   └── policy_output.yaml       # LlamaGuard output policy
 ├── 📁 chunking/                  # Xử lý văn bản pháp luật
 │   ├── law_chunking.py          # Chunking luật thành đoạn nhỏ
 │   ├── form_chunker.py          # Chunking form guidance
@@ -125,26 +130,42 @@ phapluat/
 │   └── README_Insert_Data.md    # Hướng dẫn import
 ├── 📁 frontend/                  # React Frontend
 │   ├── src/                     # React components
+│   │   ├── components/          # UI components
+│   │   │   ├── ChatWindow.js    # Chat interface
+│   │   │   ├── FloatingChatbot.js # Floating chat widget
+│   │   │   ├── Message.js       # Message component
+│   │   │   ├── MessageInput.js  # Input component
+│   │   │   └── DemoPage.js      # Demo page
+│   │   ├── hooks/               # Custom hooks
+│   │   │   └── useChatStream.js # Chat streaming logic
+│   │   ├── App.js               # Main app component
+│   │   └── index.js             # Entry point
 │   ├── public/                  # Static files
 │   ├── package.json             # Dependencies
-│   └── Dockerfile.frontend      # Frontend container
+│   ├── Dockerfile.frontend      # Frontend container
+│   └── nginx.conf               # Nginx configuration
 ├── 📁 models/                    # Pydantic Schemas
 │   └── schemas.py               # API request/response models
 ├── 📁 routers/                   # FastAPI Routes
-│   ├── chat.py                  # Chat endpoints với intent detection
+│   ├── langgraph_chat.py        # LangGraph chat endpoints
 │   └── health.py                # Health check
 ├── 📁 services/                  # Business Logic
 │   ├── llm_service.py           # LLM integration (AWS Bedrock)
+│   ├── aws_bedrock.py           # AWS Bedrock client
 │   ├── embedding.py             # Embedding service (PhoBERT)
 │   ├── qdrant_service.py        # Vector search
+│   ├── reranker_service.py      # BGE reranker
+│   ├── cache_service.py         # Redis semantic cache
 │   └── supabase_service.py      # Database operations
-├── 📁 utils/                     # Utility functions
+├── 📁 docker/                    # Docker Configuration
+│   └── docker-compose.yml       # Multi-container setup
+├── 📁 config/                    # Configuration
+├── 📁 scripts/                   # Utility scripts
+├── 📁 assets/                    # Static assets
 ├── 📄 main.py                    # FastAPI app entry point
-├── 📄 config.py                  # Configuration & clients
-├── 📄 form_embed_qdrant.py      # Tạo embeddings cho 4 loại dữ liệu
 ├── 📄 requirements.txt           # Python dependencies
-├── 📄 docker-compose.yml         # Multi-container setup
-├── 📄 Dockerfile.backend         # Backend container
+├── 📄 setup.sh                   # Setup script
+├── 📄 entrypoint.sh              # Docker entrypoint
 └── 📄 README.md                  # This file
 ```
 
@@ -160,7 +181,7 @@ IntentType.FORM       # Hướng dẫn biểu mẫu
 IntentType.TERM       # Thuật ngữ, định nghĩa
 IntentType.PROCEDURE  # Thủ tục hành chính
 IntentType.AMBIGUOUS  # Không rõ ràng
-IntentType.UNKNOWN    # Không xác định
+IntentType.GENERAL    # Tổng quát
 ```
 
 **Keywords Detection:**
@@ -198,11 +219,10 @@ AMBIGUOUS → all collections with weights
 
 ### 3. 🛡️ **Guardrails** (`agents/guardrails.py`)
 
-**4 Lớp Bảo Vệ:**
-1. **Rule-based filters** - Từ khóa cấm, PII patterns
-2. **OpenAI Moderation API** - Content safety check
-3. **LLM-based policy check** - Semantic validation
-4. **Logging + Fallback** - Audit trail và message an toàn
+**2 Lớp Bảo Vệ:**
+1. **LlamaGuard Input Policy** - Kiểm duyệt đầu vào
+2. **LlamaGuard Output Policy** - Kiểm duyệt đầu ra
+3. **Fallback Messages** - Thông báo an toàn khi vi phạm
 
 ### 4. 🔄 **Query Rewriter** (`agents/query_rewriter.py`)
 - Cải thiện câu hỏi để tăng độ chính xác search
@@ -214,61 +234,66 @@ AMBIGUOUS → all collections with weights
 - Context formatting chuyên biệt
 - Multi-category handling
 
-### 6. ⭐ **BGE Reranker** (`services/reranker_service.py`) - NEW
+### 6. ⭐ **BGE Reranker** (`services/reranker_service.py`)
 - Cross-encoder reranking với BAAI/bge-reranker-v2-m3
 - Cải thiện chất lượng kết quả tìm kiếm
 - Relevance scoring và reordering
 - Performance optimization với batch processing
 
+### 7. 🧠 **Context Manager** (`agents/context_manager.py`)
+- Quản lý context hội thoại
+- Xử lý lịch sử chat
+- Tối ưu hóa context cho câu hỏi tiếp theo
+
 ## ⚡ Pipeline Xử Lý
 
-### 🔄 Chat Pipeline Chi Tiết
+### 🔄 LangGraph Workflow Chi Tiết
 
 ```
 1. User Query
    ↓
-2. Guardrails Input Check
-   ├── LlamaGuard Input Policy
-   ├── Safety validation
-   └── Block unsafe content
-   ↓
-3. Intent Detection
+2. set_intent (Intent Detection)
    ├── Keywords analysis
    ├── Confidence scoring
    └── Collection routing
    ↓
-4. Query Rewriter
+3. semantic_cache (Cache Check)
+   ├── Embedding similarity check
+   ├── Redis cache lookup
+   └── Return cached result if found
+   ↓
+4. guardrails_input (Input Validation)
+   ├── LlamaGuard Input Policy
+   ├── Safety validation
+   └── Block unsafe content
+   ↓
+5. rewrite (Query Rewriting)
    ├── Rule-based cleaning
-   └── LLM paraphrase (nếu cần)
+   ├── Context-aware rewriting
+   └── LLM paraphrase (if needed)
    ↓
-5. Embedding Generation
-   └── Vietnamese PhoBERT
-   ↓
-6. Multi-Collection Search
+6. retrieve (Semantic Retrieval)
+   ├── Multi-collection search
    ├── Intent-based routing
-   ├── Weighted search
-   └── Initial ranking (25 candidates)
+   ├── Top 50 candidates retrieval
+   └── BGE reranking
    ↓
-7. BGE Reranking 
-   ├── Cross-encoder scoring
-   ├── Relevance reordering
-   └── Top 15 selection
+7. generate (Answer Generation)
+   ├── Dynamic prompt creation
+   ├── LLM generation (AWS Bedrock)
+   └── Streaming response
    ↓
-8. Dynamic Prompt Creation
-   ├── Intent-based prompt selection
-   ├── Context formatting
-   └── Metadata enrichment
+8. validate (Output Validation)
+   ├── LlamaGuard Output Policy
+   ├── Content safety validation
+   └── Policy compliance
    ↓
-9. LLM Generation
-   ├── DeepSeek V3
-   └── Specialized response
+9. update_memory (Memory Update)
+   ├── Conversation history update
+   ├── Context summary generation
+   └── Metadata logging
    ↓
-10. Guardrails Output Check
-    ├── LlamaGuard Output Policy
-    ├── Content safety validation
-    └── Policy compliance
-    ↓
-11. Response
+10. Response
      └── Answer + Sources + Metadata
 ```
 
@@ -276,15 +301,17 @@ AMBIGUOUS → all collections with weights
 
 | Bước | Thời gian trung bình | Ghi chú |
 |------|---------------------|---------|
-| Guardrails Input | 0.1-2.0s | LlamaGuard Input Policy |
 | Intent Detection | 0.001s | Rule-based, rất nhanh |
+| Semantic Cache | 0.01s | Redis lookup |
+| Guardrails Input | 0.1-2.0s | LlamaGuard Input Policy |
 | Query Rewrite | 0.001-0.5s | Rule-based nhanh, LLM chậm |
 | Embedding | 0.8s | Vietnamese PhoBERT |
-| Multi-collection Search | 0.03s | 4 collections, 25 candidates |
+| Multi-collection Search | 0.03s | 4 collections, 50 candidates |
 | BGE Reranking | 0.5-2.0s | Cross-encoder inference |
 | Dynamic Prompt | 0.002s | Template selection |
-| LLM Generation | 1.2s | DeepSeek V3 |
+| LLM Generation | 1.2s | Llama 4 Scout 17B |
 | Guardrails Output | 0.1-2.0s | LlamaGuard Output Policy |
+| Memory Update | 0.01s | Context processing |
 | **Tổng** | **2.1-8.5s** | **Trung bình ~4s** |
 
 ## 🚀 Cài Đặt & Triển Khai
@@ -302,7 +329,7 @@ AMBIGUOUS → all collections with weights
 #### 1. Clone Repository
 ```bash
 git clone https://github.com/tuananhne1110/Cutru_chatbot.git
-cd phapluat
+cd Cutru_chatbot
 ```
 
 #### 2. Backend Setup
@@ -359,13 +386,15 @@ cp env.example .env
 
 #### 2. Build & Run
 ```bash
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 ```
 
 #### 3. Services
 - **Frontend**: http://localhost:3000
 - **Backend**: http://localhost:8000
 - **Qdrant**: http://localhost:6333
+- **Redis**: localhost:6379
+- **Nginx**: http://localhost:80
 - **API Docs**: http://localhost:8000/docs
 
 ## 📡 API Endpoints
@@ -381,7 +410,11 @@ http://localhost:8000
 ```json
 {
   "question": "Thủ tục đăng ký tạm trú như thế nào?",
-  "session_id": "optional-session-id"
+  "session_id": "optional-session-id",
+  "messages": [
+    {"role": "user", "content": "Câu hỏi trước"},
+    {"role": "assistant", "content": "Trả lời trước"}
+  ]
 }
 ```
 
@@ -407,6 +440,7 @@ http://localhost:8000
 #### **POST /chat/stream**
 - Streaming response cho real-time chat
 - Same request format as `/chat/`
+- Server-Sent Events (SSE) format
 
 #### **GET /chat/history/{session_id}**
 ```json
@@ -441,7 +475,7 @@ http://localhost:8000
 
 ## 🛡️ Guardrails & Bảo Mật
 
-### 🔒 2 Lớp Bảo Vệ (Đã Cập Nhật)
+### 🔒 2 Lớp Bảo Vệ
 
 #### **Lớp 1: LlamaGuard Input Policy**
 - **Model**: LlamaGuard 7B cho input validation
@@ -457,7 +491,7 @@ http://localhost:8000
 - **Performance**: 0.1-2.0s
 - **Logging**: Chi tiết validation results
 
-### 📊 Safety Metrics (Cập Nhật)
+### 📊 Safety Metrics
 
 | Lớp | Coverage | Response Time | Accuracy |
 |-----|----------|---------------|----------|
@@ -475,6 +509,22 @@ http://localhost:8000
   "fallback_message": "Xin lỗi, tôi không thể hỗ trợ câu hỏi này. Vui lòng hỏi về lĩnh vực pháp luật Việt Nam."
 }
 ```
+
+## 📊 Monitoring & Logging
+
+### 🔍 Langfuse Integration
+- **Performance tracking**: Thời gian xử lý từng bước
+- **Error monitoring**: Theo dõi lỗi và exceptions
+- **User analytics**: Phân tích hành vi người dùng
+- **Model performance**: Đánh giá chất lượng LLM
+
+### 📈 Metrics Dashboard
+- **Response time**: Thời gian phản hồi trung bình
+- **Cache hit rate**: Tỷ lệ cache hit
+- **Intent distribution**: Phân bố loại câu hỏi
+- **Error rate**: Tỷ lệ lỗi
+
+## ❌ Troubleshooting
 
 ### ❌ Lỗi Thường Gặp
 
@@ -502,18 +552,27 @@ http://localhost:8000
 # Giải pháp: Kiểm tra SUPABASE_URL và SUPABASE_KEY
 ```
 
+#### **5. Redis Connection Error**
+```bash
+# Nguyên nhân: Redis service không chạy
+# Giải pháp: Kiểm tra Redis container hoặc local Redis
+```
+
 ### 📋 Checklist Deployment
 
 - [ ] Environment variables configured
 - [ ] Database tables created (4 tables)
 - [ ] Data imported to Supabase (4 types)
 - [ ] Embeddings uploaded to Qdrant (4 collections)
+- [ ] Redis cache service running
 - [ ] API keys valid
 - [ ] Services running
 - [ ] Health checks passing
 - [ ] Intent detection working
 - [ ] Frontend accessible
 - [ ] Chat functionality working
+- [ ] Streaming response working
+- [ ] Cache functionality working
 
 ## 🎯 Use Cases & Examples
 
@@ -546,6 +605,39 @@ http://localhost:8000
 "Đăng ký cư trú cần gì?"
 → Intent: AMBIGUOUS → all collections → General prompt
 ```
----
+
+## 🔄 Cache Strategy
+
+### 🚀 Semantic Caching
+- **Redis-based**: Lưu trữ kết quả dựa trên embedding similarity
+- **Threshold**: 0.85 similarity score
+- **TTL**: 1 giờ cho cache entries
+- **Limit**: 1000 cached entries
+
+### 📊 Cache Performance
+- **Hit rate**: ~30-40% cho câu hỏi tương tự
+- **Response time**: <100ms cho cache hits
+- **Memory usage**: ~50MB cho 1000 entries
+
+## 🎨 Frontend Features
+
+### 💬 Chat Interface
+- **Real-time streaming**: Server-Sent Events
+- **Message history**: Lưu trữ và hiển thị lịch sử
+- **Source display**: Hiển thị nguồn tham khảo
+- **File download**: Tải biểu mẫu và tài liệu
+- **Responsive design**: Mobile-friendly
+
+### 🎯 UI Components
+- **FloatingChatbot**: Widget chat nổi
+- **ChatWindow**: Cửa sổ chat chính
+- **Message**: Component tin nhắn
+- **MessageInput**: Input nhập câu hỏi
+- **DemoPage**: Trang demo
+
+### 🔧 Custom Hooks
+- **useChatStream**: Quản lý streaming chat
+- **Session management**: Quản lý phiên chat
+- **Error handling**: Xử lý lỗi gracefully
 
 
