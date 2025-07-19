@@ -119,18 +119,8 @@ class QueryRewriter:
         """
         Dùng LLM để rewrite, giữ ý định gốc, bổ sung context nếu có
         """
-        # Giả lập prompt, thực tế nên gọi LLM API
-        prompt = f"Viết lại câu hỏi sau cho rõ ràng, giữ nguyên ý định gốc.\n"
-        prompt += f"Câu hỏi gốc: {original}\n"
-        if context:
-            prompt += f"Bối cảnh: {context}\n"
-        if intent:
-            prompt += f"Ý định: {intent}\n"
-        if meta:
-            prompt += f"Meta: {meta}\n"
-        prompt += "Chỉ viết lại, không trả lời."
-        # TODO: Gọi LLM thực tế ở đây
-        return prompt  # Trả về prompt để debug, thực tế trả về kết quả LLM
+        # Tạm thời trả về câu hỏi gốc đã clean thay vì prompt
+        return original
 
     def rewrite(self, text: str, context: Optional[str] = None) -> str:
         """

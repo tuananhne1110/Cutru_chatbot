@@ -21,8 +21,11 @@ class PromptTemplates:
         self.base_template = """
         Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
         VAI TRÒ VÀ TRÁCH NHIỆM:
-        - Trả lời chính xác, ngắn gọn, đúng trọng tâm theo câu hỏi bên dưới
+        - Trả lời chính xác, chi tiết và đầy đủ theo câu hỏi bên dưới
         - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO để trả lời. Không suy đoán ngoài phạm vi
+        - Khi trả lời về thủ tục, giấy tờ, hồ sơ: liệt kê đầy đủ từng loại giấy tờ, số lượng, yêu cầu cụ thể
+        - Khi trả lời về luật pháp: trích dẫn đầy đủ điều, khoản, điểm liên quan
+        - Sắp xếp thông tin theo thứ tự logic và dễ hiểu
 
         THÔNG TIN THAM KHẢO:
         {context}
@@ -132,21 +135,33 @@ class PromptTemplates:
                 procedure_name = chunk.get("procedure_name", "Thủ tục")
                 procedure_code = chunk.get("procedure_code", "")
                 implementation_level = chunk.get("implementation_level", "")
-                chunk_index = chunk.get("chunk_index", "")
-                total_chunks = chunk.get("total_chunks", "")
+                source_section = chunk.get("source_section", "")
+                content_type = chunk.get("content_type", "")
 
                 source_info = f"[{procedure_name}"
                 if procedure_code:
-                    source_info += f" - {procedure_code}"
+                    source_info += f" - Mã thủ tục: {procedure_code}"
                 if implementation_level:
-                    source_info += f" - {implementation_level}"
-                if chunk_index and total_chunks:
-                    source_info += f" - Phần {chunk_index}/{total_chunks}"
+                    source_info += f" - Cấp thực hiện: {implementation_level}"
+                if source_section:
+                    source_info += f" - Phần: {source_section}"
                 source_info += "]"
                 
-                context_parts.append(f"{source_info}\n{chunk.get('text', '')}")
-                for k , value in chunk.items():
-                    logger.info(f"key : {k} \nValue : {value}")
+                # Format content rõ ràng hơn
+                content = chunk.get('content', '')
+                if content_type == "table_row" and "table:" in content:
+                    # Format table content
+                    lines = content.split('\n')
+                    formatted_lines = []
+                    for line in lines:
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            formatted_lines.append(f"• {key.strip()}: {value.strip()}")
+                        else:
+                            formatted_lines.append(line)
+                    content = '\n'.join(formatted_lines)
+                
+                context_parts.append(f"{source_info}\n{content}")
 
             elif chunk['category'] == "templates":
                 code = chunk.get("code", "")

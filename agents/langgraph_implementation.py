@@ -39,6 +39,7 @@ class ChatState(TypedDict):
     question: str
     session_id: str
     intent: Optional[IntentType]
+    all_intents: List[tuple]  # Lưu tất cả intents
     context_docs: List[Document]
     rewritten_query: Optional[str]
     sources: List[Dict[str, Any]]
@@ -73,10 +74,16 @@ class RAGNodes:
         self._executor = ThreadPoolExecutor()
         
     async def set_intent(self, state: ChatState) -> ChatState:
+        """Bước 1: Phân tích intent từ câu hỏi"""
         question = state["question"]
-        # intent, metadata = self.intent_detector.detect_intent(question)
-        intent = self.intent_detector.detect_intent(question)
-        state["intent"] = intent
+        intents = self.intent_detector.detect_intent(question)
+        # Lưu tất cả intents để xử lý sau
+        state["all_intents"] = intents
+        # Lấy intent đầu tiên làm primary intent
+        primary_intent = intents[0][0] if intents else IntentType.GENERAL
+        state["intent"] = primary_intent
+        logger.info(f"[LangGraph] All intents detected: {intents}")
+        logger.info(f"[LangGraph] Primary intent: {primary_intent}")
         return state
 
     
@@ -103,37 +110,250 @@ class RAGNodes:
         return state
     
     async def retrieve_context(self, state: ChatState) -> ChatState:
-        """Retrieve context documents"""
+        """Bước 2: Truy vấn Qdrant 1 lần với limit cao"""
         start_time = time.time()
         query = state.get("rewritten_query") or state["question"] or ""
-        intent = state["intent"]
-        if intent is None:
+        all_intents = state.get("all_intents", [])
+        primary_intent = state["intent"]
+        
+        if primary_intent is None:
             raise ValueError("Intent must not be None in retrieve_context")
-        collections = intent_detector.get_search_collections(intent)
-        # Ẩn toàn bộ log retrieval
+        
+        # Lấy collections dựa trên tất cả intents
+        all_collections = set()
+        for intent_tuple in all_intents:
+            intent, _ = intent_tuple
+            collections = intent_detector.get_search_collections([(intent, query)])
+            all_collections.update(collections)
+        
+        collections = list(all_collections)
+        logger.info(f"[LangGraph] Collections to search (from all intents): {collections}")
+        
         loop = asyncio.get_running_loop()
         embedding = await loop.run_in_executor(self._executor, get_embedding, query)
         all_docs = []
+        
+        # Bước 2: Gọi Qdrant 1 lần với limit cao (50)
         for collection in collections:
             if collection == "general_chunks":
                 continue
-
-            results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 8)  
-            docs = [Document(page_content=r.payload.get("text", ""), metadata=r.payload) for r in results]
-            logger.info(f'filter_condition: {filter_condition}')
+                
+            # Tăng limit lên 50 để lấy đủ dữ liệu
+            results, filter_condition = await loop.run_in_executor(self._executor, search_qdrant, collection, embedding, query, 50)
+            results_list = results if isinstance(results, list) else [results]
+            logger.info(f"[LangGraph] Collection {collection}: found {len(results_list)} results")
+            
+            # Chuyển đổi kết quả thành Document objects
+            docs = []
+            for r in results_list:
+                if hasattr(r, 'payload') and r.payload:
+                    content = r.payload.get("content") or r.payload.get("text", "")
+                    docs.append(Document(page_content=content, metadata=r.payload))
+                elif isinstance(r, dict):
+                    content = r.get("content") or r.get("text", "")
+                    docs.append(Document(page_content=content, metadata=r))
+            
             all_docs.extend(docs)
+        
+        # Rerank để lấy top chunks
         if all_docs:
             reranker = get_reranker()
-            reranked_docs = await loop.run_in_executor(self._executor, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 8)  
+            reranked_docs = await loop.run_in_executor(self._executor, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 50)
             for i, doc in enumerate(all_docs[:len(reranked_docs)]):
                 doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
-            # for idx, doc in enumerate(all_docs[:3]):
-            #     meta = doc.metadata
-            #     logger.info(f"[Retrieval] Top doc {idx+1}: law_name={meta.get('law_name')}, article={meta.get('article')}, chapter={meta.get('chapter')}, score={meta.get('rerank_score')}, content={doc.page_content}")
-        state["context_docs"] = all_docs[:8]  
+        
+        # Bước 3: Xử lý kết quả tại RAM - Gom nhóm theo parent_id cho LAW intent
+        if primary_intent == IntentType.LAW:
+            logger.info("[LangGraph] LAW intent detected - starting parent_id grouping...")
+            
+            # Log trước khi gom nhóm
+            logger.info(f"[LangGraph] Before grouping: {len(all_docs)} docs")
+            for i, doc in enumerate(all_docs[:5]):
+                logger.info(f"  Doc {i+1}: id={doc.metadata.get('id')}, parent_id={doc.metadata.get('parent_id')}, type={doc.metadata.get('type')}")
+            
+            # Gom nhóm theo parent_id
+            group_map = self._group_law_chunks_by_parent(all_docs)
+            logger.info(f"[LangGraph] Grouping completed: {len(group_map)} groups")
+            
+            # Log chi tiết từng nhóm
+            logger.info("[LangGraph] GROUP DETAILS:")
+            for parent_id, group in group_map.items():
+                logger.info(f"  Group {parent_id}: {len(group)} docs")
+                for doc in group:
+                    logger.info(f"    - {doc.metadata.get('type')} {doc.metadata.get('clause', '')} {doc.metadata.get('point', '')}: {doc.page_content[:50]}...")
+            
+            # Merge và format
+            merged_docs = self._merge_and_format_law_chunks(group_map)
+            logger.info(f"[LangGraph] After merging: {len(merged_docs)} merged docs")
+            
+            # Log merged docs
+            logger.info("[LangGraph] MERGED DOCS:")
+            for i, doc in enumerate(merged_docs):
+                logger.info(f"  Merged Doc {i+1}:")
+                logger.info(f"    Title: {doc.metadata.get('law_name', '')} - {doc.metadata.get('article', '')}")
+                logger.info(f"    Content: {doc.page_content[:200]}...")
+                logger.info("-" * 40)
+            
+            state["context_docs"] = merged_docs[:8]
+        else:
+            # Các intent khác: giữ nguyên
+            state["context_docs"] = all_docs[:8]
+        
+        # Log debug chi tiết
+        logger.info(f"[LangGraph] DEBUG: Total docs retrieved: {len(all_docs)}")
+        logger.info(f"[LangGraph] DEBUG: Context docs set: {len(state['context_docs'])}")
+        
+        # Log chi tiết từng context doc
+        logger.info("="*80)
+        logger.info("[LangGraph] CONTEXT_DOCS DETAILS:")
+        for i, doc in enumerate(state["context_docs"]):
+            logger.info(f"Doc {i+1}:")
+            logger.info(f"  Content: {doc.page_content}")
+            logger.info(f"  Metadata: {doc.metadata}")
+            logger.info("-"*40)
+        logger.info("="*80)
+        
         duration = time.time() - start_time
         state["processing_time"]["context_retrieval"] = duration
+        logger.info(f"[LangGraph] Retrieval completed: {len(state['context_docs'])} docs in {duration:.4f}s")
         return state
+    
+    async def _enhance_law_chunks_with_parents(self, all_docs: List[Document], collection: str) -> List[Document]:
+        """Tìm thêm các chunk có parent_id trùng với id của chunk đã tìm được"""
+        enhanced_docs = all_docs.copy()
+        
+        # Lấy tất cả id từ docs đã tìm được
+        retrieved_ids = set()
+        for doc in all_docs:
+            doc_id = doc.metadata.get("id")
+            if doc_id:
+                retrieved_ids.add(doc_id)
+        
+        # Tìm thêm các chunk có parent_id trùng với retrieved_ids
+        # Tạm thời bỏ qua logic này để tránh gọi Qdrant quá nhiều
+        # TODO: Implement logic tìm parent chunks hiệu quả hơn
+        
+        logger.info(f"[LangGraph] Enhanced docs: {len(all_docs)} -> {len(enhanced_docs)} (parent chunks enhancement disabled)")
+        return enhanced_docs
+    
+    def _group_law_chunks_by_parent(self, all_docs: List[Document]) -> Dict[str, List[Document]]:
+        """Bước 3: Nhóm chunks theo parent_id - chỉ cho LAW intent"""
+        logger.info("[LangGraph] Starting _group_law_chunks_by_parent...")
+        
+        # Tạo map từ id → chunk để tra nhanh
+        id_to_doc = {}
+        for doc in all_docs:
+            doc_id = doc.metadata.get("id")
+            if doc_id:
+                id_to_doc[doc_id] = doc
+        
+        logger.info(f"[LangGraph] Created id_to_doc map with {len(id_to_doc)} entries")
+        
+        # Nhóm theo parent_id
+        group_map = {}
+        for doc in all_docs:
+            meta = doc.metadata
+            doc_id = meta.get("id")
+            parent_id = meta.get("parent_id")
+            doc_type = meta.get("type", "")
+            
+            logger.info(f"[LangGraph] Processing doc: id={doc_id}, parent_id={parent_id}, type={doc_type}")
+            
+            if doc_type == "điều":
+                # Nếu là điều, tạo nhóm mới
+                if doc_id:
+                    if doc_id not in group_map:
+                        group_map[doc_id] = []
+                    group_map[doc_id].append(doc)
+                    logger.info(f"[LangGraph] Created new group for điều: {doc_id}")
+            elif parent_id:
+                # Nếu là khoản/điểm, gán vào nhóm parent
+                if parent_id not in group_map:
+                    group_map[parent_id] = []
+                group_map[parent_id].append(doc)
+                logger.info(f"[LangGraph] Added to parent group: {parent_id}")
+        
+        # Đảm bảo mỗi nhóm có cả điều cha (nếu có)
+        for parent_id, group in group_map.items():
+            if parent_id in id_to_doc and id_to_doc[parent_id] not in group:
+                group.insert(0, id_to_doc[parent_id])
+                logger.info(f"[LangGraph] Added parent điều to group: {parent_id}")
+        
+        logger.info(f"[LangGraph] Final group_map has {len(group_map)} groups")
+        return group_map
+    
+    def _merge_and_format_law_chunks(self, group_map: Dict[str, List[Document]]) -> List[Document]:
+        """Bước 4: Sắp xếp, gộp và tạo ngữ cảnh - chỉ cho LAW intent"""
+        logger.info("[LangGraph] Starting _merge_and_format_law_chunks...")
+        merged_docs = []
+        
+        for parent_id, group in group_map.items():
+            if not group:
+                continue
+                
+            logger.info(f"[LangGraph] Processing group {parent_id} with {len(group)} docs")
+            
+            # Sắp xếp khoản, điểm theo thứ tự
+            def sort_key(doc):
+                meta = doc.metadata
+                clause = meta.get("clause", "")
+                point = meta.get("point", "")
+                # Ưu tiên điều trước, sau đó đến khoản, điểm
+                if meta.get("type") == "điều":
+                    return (0, 0, 0)
+                try:
+                    clause_num = int(clause) if clause.isdigit() else 99
+                except:
+                    clause_num = 99
+                try:
+                    point_num = ord(point.lower()) - ord('a') if point and point.isalpha() else 99
+                except:
+                    point_num = 99
+                return (1, clause_num, point_num)
+            
+            group_sorted = sorted(group, key=sort_key)
+            logger.info(f"[LangGraph] Sorted group {parent_id}: {[doc.metadata.get('type', '') + ' ' + doc.metadata.get('clause', '') + ' ' + doc.metadata.get('point', '') for doc in group_sorted]}")
+            
+            # Format lại context: Điều + các khoản/điểm
+            meta = group_sorted[0].metadata
+            law_name = meta.get("law_name", "")
+            chapter = meta.get("chapter", "")
+            article = meta.get("article", "")
+            
+            title = f"{law_name}"
+            if chapter:
+                title += f" - {chapter}"
+            if article:
+                title += f" - Điều {article}"
+            
+            logger.info(f"[LangGraph] Creating merged doc with title: {title}")
+            
+            content_lines = []
+            for doc in group_sorted:
+                m = doc.metadata
+                t = m.get("type", "")
+                clause = m.get("clause", "")
+                point = m.get("point", "")
+                
+                if t == "điều":
+                    content_lines.append(doc.page_content.strip())
+                    logger.info(f"[LangGraph] Added điều content: {doc.page_content[:50]}...")
+                elif t == "khoản":
+                    content_lines.append(f"- Khoản {clause}: {doc.page_content.strip()}")
+                    logger.info(f"[LangGraph] Added khoản {clause}: {doc.page_content[:50]}...")
+                elif t == "điểm":
+                    content_lines.append(f"  + Điểm {point}: {doc.page_content.strip()}")
+                    logger.info(f"[LangGraph] Added điểm {point}: {doc.page_content[:50]}...")
+                else:
+                    content_lines.append(doc.page_content.strip())
+                    logger.info(f"[LangGraph] Added other type {t}: {doc.page_content[:50]}...")
+            
+            merged_text = "\n".join(content_lines)
+            merged_docs.append(Document(page_content=f"{title}\n{merged_text}", metadata=meta))
+            logger.info(f"[LangGraph] Created merged doc with {len(content_lines)} content lines")
+        
+        logger.info(f"[LangGraph] Total merged docs created: {len(merged_docs)}")
+        return merged_docs
     
     async def generate_answer(self, state: ChatState) -> ChatState:
         """Generate answer với context (sử dụng streaming thực sự nếu có)"""
@@ -142,6 +362,17 @@ class RAGNodes:
         docs = state["context_docs"]
         intent = state["intent"]
         
+        # Log debug
+        logger.info(f"[LangGraph] Generate answer started")
+        logger.info(f"[LangGraph] DEBUG: Question: {question}")
+        logger.info(f"[LangGraph] DEBUG: Number of docs: {len(docs)}")
+        logger.info(f"[LangGraph] DEBUG: Intent: {intent}")
+        
+        if not docs:
+            logger.warning(f"[LangGraph] No docs found for question: {question}")
+            state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn."
+            return state
+        
         # Tạo prompt
         loop = asyncio.get_running_loop()
         logger.info(f"[LangGraph] Sắp tạo prompt với prompt_manager...")
@@ -149,10 +380,14 @@ class RAGNodes:
         for i, doc in enumerate(docs[:3]):
             logger.info(f"[LangGraph] DEBUG: Doc {i}: {doc.metadata}")
         prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs])
-        logger.info("__"*30)
-
-        logger.info(f"[LangGraph] Đã tạo xong prompt, độ dài: {len(prompt)}, prompt: {prompt}")
-        logger.info("__"*30)
+        logger.info("="*80)
+        logger.info("[LangGraph] PROMPT DETAILS:")
+        logger.info(f"Question: {question}")
+        logger.info(f"Number of docs: {len(docs)}")
+        logger.info(f"Prompt length: {len(prompt)}")
+        logger.info(f"Prompt content:")
+        logger.info(prompt)
+        logger.info("="*80)
 
 
         state["prompt"] = prompt  # Store prompt for streaming
@@ -372,6 +607,7 @@ def create_initial_state(question: str, messages: List[Dict], session_id: str) -
         "question": question,
         "session_id": session_id,
         "intent": None,
+        "all_intents": [],
         "context_docs": [],
         "rewritten_query": None,
         "sources": [],
