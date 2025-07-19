@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from aws_bedrock import ModelClient, ClaudeConfig, LlamaConfig, ClaudeHandler, LlamaHandler
+from services.aws_bedrock import ModelClient, ClaudeConfig, LlamaConfig, ClaudeHandler, LlamaHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

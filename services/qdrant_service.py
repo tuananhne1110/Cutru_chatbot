@@ -1,6 +1,6 @@
 import sys
 import os
-from app_config import qdrant_client
+from config.app_config import qdrant_client
 from instructor import from_bedrock, Mode
 from pydantic import BaseModel
 from qdrant_client.models import Filter, Condition

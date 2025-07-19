@@ -175,62 +175,39 @@ class ContextManager:
         
         return "\n".join(summary_parts)
     
-    def create_optimized_prompt(self, 
-                              base_prompt: str, 
-                              context_string: str, 
-                              current_question: str) -> str:
-        """
-        Tạo prompt tối ưu với cấu trúc rõ ràng
+    # def create_optimized_prompt(self, 
+    #                           base_prompt: str, 
+    #                           context_string: str, 
+    #                           current_question: str) -> str:
+    #     """
+    #     Tạo prompt tối ưu với cấu trúc rõ ràng
         
-        Args:
-            base_prompt: Prompt cơ bản từ prompt manager
-            context_string: Context string đã xử lý
-            current_question: Câu hỏi hiện tại
+    #     Args:
+    #         base_prompt: Prompt cơ bản từ prompt manager
+    #         context_string: Context string đã xử lý
+    #         current_question: Câu hỏi hiện tại
             
-        Returns:
-            str: Prompt tối ưu
-        """
-        if not context_string:
-            return base_prompt
+    #     Returns:
+    #         str: Prompt tối ưu
+    #     """
+    #     if not context_string:
+    #         return base_prompt
         
-        # Tìm vị trí để chèn context
-        if "VAI TRÒ VÀ TRÁCH NHIỆM:" in base_prompt:
-            # Chèn sau phần system prompt
-            system_end = base_prompt.find("CÂU HỎI:")
-            if system_end != -1:
-                optimized_prompt = (
-                    base_prompt[:system_end] + 
-                    f"\n\n{context_string}\n" +
-                    base_prompt[system_end:]
-                )
-                return optimized_prompt
+    #     # Tìm vị trí để chèn context
+    #     if "VAI TRÒ VÀ TRÁCH NHIỆM:" in base_prompt:
+    #         # Chèn sau phần system prompt
+    #         system_end = base_prompt.find("CÂU HỎI:")
+    #         if system_end != -1:
+    #             optimized_prompt = (
+    #                 base_prompt[:system_end] + 
+    #                 f"\n\n{context_string}\n" +
+    #                 base_prompt[system_end:]
+    #             )
+    #             return optimized_prompt
         
-        # Fallback: thêm vào đầu
-        return f"{base_prompt}\n\n{context_string}\n\nCÂU HỎI HIỆN TẠI: {current_question}"
+    #     # Fallback: thêm vào đầu
+    #     return f"{base_prompt}\n\n{context_string}\n\nCÂU HỎI HIỆN TẠI: {current_question}"
     
-    def log_context_processing(self, 
-                             original_messages: List[Dict], 
-                             processed_turns: List[ConversationTurn],
-                             context_string: str,
-                             current_question: str):
-        """Log quá trình xử lý context để debug"""
-        logger.info("=== CONTEXT PROCESSING LOG ===")
-        logger.info(f"Original messages: {len(original_messages)}")
-        logger.info(f"Processed turns: {len(processed_turns)}")
-        logger.info(f"Context length: {len(context_string)} chars")
-        logger.info(f"Current question: {current_question}")
-        
-        if processed_turns:
-            logger.info("Relevance scores:")
-            for i, turn in enumerate(processed_turns):
-                logger.info(f"  Turn {i+1} ({turn.role}): {turn.relevance_score:.2f} - {turn.content[:50]}...")
-
+    
 # Singleton instance
 context_manager = ContextManager()
-
-# Phương thức tiện ích để reset context manager với cấu hình mới
-def reset_context_manager(max_turns: int = 20, max_tokens: int = 4000):
-    """Reset context manager với cấu hình mới"""
-    global context_manager
-    context_manager = ContextManager(max_turns=max_turns, max_tokens=max_tokens)
-    logger.info(f"Context manager reset with max_turns={max_turns}, max_tokens={max_tokens}") 

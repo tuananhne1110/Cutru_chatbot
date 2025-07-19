@@ -1,7 +1,7 @@
 import json
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from app_config import embedding_model
-from app_config import qdrant_client as client
+from config.app_config import embedding_model
+from config.app_config import qdrant_client as client
 
 # 1. Đường dẫn các file chunk
 json_files = [

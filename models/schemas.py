@@ -23,7 +23,3 @@ class ChatResponse(BaseModel):
     sources: List[Source]
     session_id: str
     timestamp: str
-
-class ChatHistoryResponse(BaseModel):
-    messages: List[dict]
-    session_id: str 

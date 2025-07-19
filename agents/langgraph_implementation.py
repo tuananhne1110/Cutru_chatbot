@@ -50,14 +50,6 @@ class ChatState(TypedDict):
     prompt: Optional[str]  # Add prompt for streaming
     answer_chunks: Optional[List[str]]  # Add for streaming real chunks
 
-class ConversationMemory(BaseModel):
-    """Memory cho conversation context"""
-    session_id: str
-    messages: List[BaseMessage]
-    context_summary: Optional[str]
-    relevant_entities: List[str]
-    conversation_turns: int
-
 # ============================================================================
 # GRAPH NODES
 # ============================================================================
