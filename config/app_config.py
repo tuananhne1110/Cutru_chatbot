@@ -15,8 +15,10 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
 
 qdrant_client = QdrantClient(
-    url=os.getenv("QDRANT_URL"),
-    api_key=os.getenv("QDRANT_API_KEY"),
+    # url=os.getenv("QDRANT_URL"),
+    # api_key=os.getenv("QDRANT_API_KEY"),
+    host="localhost",
+    port=6333
 )
 
 # Initialization Supabase client

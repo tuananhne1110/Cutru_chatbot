@@ -69,28 +69,18 @@ class PromptTemplates:
         
         for chunk in chunks:
             if chunk['category'] == "law":
-                logger.info(f"check cateogty ======== : {CategoryType.LAW}")
-
-                # Format cho law chunks
+                # Ưu tiên lấy page_content (merged text) nếu có
+                content = chunk.get('page_content') or chunk.get('content', '')
                 law_name = chunk.get("law_name", "Luật")
                 article = chunk.get("article", "")
                 chapter = chunk.get("chapter", "")
-                clause = chunk.get("clause", "")
-                point = chunk.get("point", "")
-                
                 source_info = f"[{law_name}"
                 if article:
                     source_info += f" - {article}"
                 if chapter:
                     source_info += f" - {chapter}"
-                if clause:
-                    source_info += f" - Khoản {clause}"
-                if point:
-                    source_info += f" - Điểm {point}"
                 source_info += "]"
-                
-                context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
-                
+                context_parts.append(f"{source_info}\n{content}")
             elif chunk['category'] == "form":
                 logger.info(f"check cateogty ======== : {CategoryType.FORM}")
 
@@ -110,7 +100,6 @@ class PromptTemplates:
                 source_info += "]"
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
-                
             elif chunk['category'] == "term":
                 logger.info(f"check cateogty ======== : {CategoryType.TERM}")
 
@@ -127,7 +116,6 @@ class PromptTemplates:
                 source_info += "]"
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
-                
             elif chunk['category'] == "procedure":
                 logger.info(f"check cateogty ======== : {CategoryType.PROCEDURE}")
 
@@ -162,7 +150,6 @@ class PromptTemplates:
                     content = '\n'.join(formatted_lines)
                 
                 context_parts.append(f"{source_info}\n{content}")
-
             elif chunk['category'] == "templates":
                 code = chunk.get("code", "")
                 name = chunk.get("name", "")
@@ -172,7 +159,6 @@ class PromptTemplates:
                 context_parts.append(
                     f"[{code}] {name}\nMô tả: {description}\nThủ tục liên quan: {procedures}\nFile: {file_url}"
                 )
-                
             else:
                 context_parts.append("================ Không cần tham khảo ở dòng này ================")
         return "\n\n".join(context_parts)

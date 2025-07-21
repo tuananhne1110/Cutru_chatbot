@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 import logging
 from .prompt_templates import prompt_templates, CategoryType
-from .intent_detector import IntentType, intent_detector
+from agents.intent_detector import IntentType, intent_detector
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,7 @@ class PromptManager:
         Returns:
             str: Prompt hoàn chỉnh
         """
-        
-            
-        
-        
+
         # Lấy prompt template theo category
         prompt_template = self.prompt_templates.get_prompt_by_category()
         

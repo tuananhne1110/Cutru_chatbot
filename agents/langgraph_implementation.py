@@ -371,17 +371,19 @@ class RAGNodes:
         logger.info(f"[LangGraph] DEBUG: Sắp tạo prompt với question: {question}, số docs: {len(docs)}, intent: {intent}")
         for i, doc in enumerate(docs[:3]):
             logger.info(f"[LangGraph] DEBUG: Doc {i}: {doc.metadata}")
-        prompt = self.prompt_manager.create_dynamic_prompt(question, [doc.metadata for doc in docs])
-        logger.info("="*80)
-        logger.info("[LangGraph] PROMPT DETAILS:")
-        logger.info(f"Question: {question}")
-        logger.info(f"Number of docs: {len(docs)}")
-        logger.info(f"Prompt length: {len(prompt)}")
-        logger.info(f"Prompt content:")
-        logger.info(prompt)
-        logger.info("="*80)
-
-
+        # SỬA: truyền cả content vào context
+        prompt = self.prompt_manager.create_dynamic_prompt(
+            question,
+            [{"content": doc.page_content, "page_content": doc.page_content, **doc.metadata} for doc in docs]
+        )
+        # logger.info("="*80)
+        # logger.info("[LangGraph] PROMPT DETAILS:")
+        # logger.info(f"Question: {question}")
+        # logger.info(f"Number of docs: {len(docs)}")
+        # logger.info(f"Prompt length: {len(prompt)}")
+        # logger.info(f"Prompt content:")
+        # logger.info(prompt)
+        # logger.info("="*80)
         state["prompt"] = prompt  # Store prompt for streaming
 
         # Call LLM to generate answer
@@ -497,6 +499,7 @@ class RAGNodes:
             state["error"] = None
             # Nếu hit cache, có thể set flag để dừng sớm nếu muốn
         return state
+
     async def guardrails_input(self, state: ChatState) -> ChatState:
         """Kiểm tra an toàn đầu vào (LlamaGuard Input)"""
         from agents.guardrails import Guardrails
