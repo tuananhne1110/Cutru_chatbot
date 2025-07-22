@@ -320,3 +320,21 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             with_payload=True
         )
         return vector_search_results, filter_condition
+
+
+def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):
+    """Truy vấn Qdrant lấy các chunk theo parent_id (không dùng embedding/query)"""
+    filter_condition = {
+        "must": [
+            {"key": "parent_id", "match": {"value": parent_id}}
+        ]
+    }
+    results, _ = qdrant_client.scroll(
+        collection_name=collection_name,
+        scroll_filter=filter_condition,
+        limit=limit,
+        with_payload=True,
+        with_vectors=False
+    )
+    # results đã là list các điểm
+    return results

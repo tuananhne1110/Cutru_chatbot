@@ -3,7 +3,9 @@ from datetime import datetime
 import uuid
 import logging
 from models.schemas import ChatRequest, ChatResponse, Source
-from agents.langgraph_implementation import rag_workflow, create_initial_state, extract_results_from_state, ChatState
+from agents.workflow import rag_workflow
+from agents.utils.message_conversion import create_initial_state, extract_results_from_state
+from agents.state import ChatState
 from langchain_core.runnables import RunnableConfig
 from typing import cast
 from fastapi.responses import StreamingResponse

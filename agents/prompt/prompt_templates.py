@@ -24,7 +24,8 @@ class PromptTemplates:
         - Trả lời chính xác, chi tiết và đầy đủ theo câu hỏi bên dưới
         - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO để trả lời. Không suy đoán ngoài phạm vi
         - Khi trả lời về thủ tục, giấy tờ, hồ sơ: liệt kê đầy đủ từng loại giấy tờ, số lượng, yêu cầu cụ thể
-        - Khi trả lời về luật pháp: trích dẫn đầy đủ điều, khoản, điểm liên quan
+        - Khi trả lời về luật pháp: TRÍCH DẪN ĐẦY ĐỦ nội dung các điều, khoản, điểm liên quan (không chỉ nhắc tên điều luật)
+        - Sau khi trình bày nội dung luật, hãy TÓM TẮT và CHỐT LẠI ý chính cho người dùng
         - Sắp xếp thông tin theo thứ tự logic và dễ hiểu
 
         THÔNG TIN THAM KHẢO:

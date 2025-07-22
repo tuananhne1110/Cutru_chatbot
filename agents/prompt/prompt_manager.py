@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 import logging
-from .prompt_templates import prompt_templates, CategoryType
-from agents.intent_detector import IntentType, intent_detector
+from agents.prompt.prompt_templates import prompt_templates, CategoryType
+from agents.utils.intent_detector import IntentType, intent_detector
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,10 @@ class PromptManager:
         
         # Format context theo category
         formatted_context = self.prompt_templates.format_context_by_category(chunks)
+        
+        # Thêm log để kiểm tra context truyền vào prompt
+        logger.info("[PromptManager] THÔNG TIN THAM KHẢO (context) truyền vào prompt:")
+        logger.info(formatted_context)
         
         # Tạo prompt hoàn chỉnh
         final_prompt = prompt_template.format(

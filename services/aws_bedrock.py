@@ -403,7 +403,7 @@ class ModelClient:
         """Stream response từ Bedrock (chỉ hỗ trợ cho model có streaming, ví dụ Llama 4)."""
         body = self._build_request_body(messages, system_prompt, config_overrides)
         model_id = config_overrides.model_id if config_overrides else self.config.model_id
-        self.logger.info(f"[stream_message] Starting stream for model: {model_id}")
+        # self.logger.info(f"[stream_message] Starting stream for model: {model_id}")
         try:
             response = self.bedrock_runtime.invoke_model_with_response_stream(
                 body=json.dumps(body),
@@ -415,7 +415,7 @@ class ModelClient:
             for event in response['body']:
                 if 'chunk' in event:
                     chunk_data = event['chunk']
-                    self.logger.debug(f"[stream_message] Raw chunk data: {repr(chunk_data)}")
+                    # self.logger.debug(f"[stream_message] Raw chunk data: {repr(chunk_data)}")
                     
                     try:
                         # Bedrock có thể trả về dạng {'bytes': b'...'} hoặc bytes trực tiếp
@@ -430,7 +430,7 @@ class ModelClient:
                             # Trường hợp string hoặc dict khác
                             chunk_str = chunk_data
                         
-                        self.logger.debug(f"[stream_message] Decoded chunk: {repr(chunk_str)}")
+                        # self.logger.debug(f"[stream_message] Decoded chunk: {repr(chunk_str)}")
                         
                         # Parse JSON
                         if isinstance(chunk_str, dict):
@@ -438,7 +438,7 @@ class ModelClient:
                         else:
                             chunk_json = json.loads(chunk_str)
                         
-                        self.logger.debug(f"[stream_message] Parsed JSON: {chunk_json}")
+                        # self.logger.debug(f"[stream_message] Parsed JSON: {chunk_json}")
                         
                         # Thử nhiều field khác nhau
                         text = None
@@ -462,23 +462,22 @@ class ModelClient:
                                 text = delta["text"]
                         
                         if text:
-                            self.logger.debug(f"[stream_message] Extracted text: {repr(text)}")
+                            # self.logger.debug(f"[stream_message] Extracted text: {repr(text)}")
                             yield text
                         else:
-                            # Chỉ log warning nếu chunk có dữ liệu nhưng không extract được text
-                            # Bỏ qua các chunk rỗng hoặc chỉ có metadata
-                            if chunk_json and len(str(chunk_json)) > 10:  # Chỉ log nếu chunk có nội dung đáng kể
-                                self.logger.warning(f"[stream_message] No text found in chunk: {chunk_json}")
-                            else:
-                                self.logger.debug(f"[stream_message] Skipping empty/metadata chunk: {chunk_json}")
+                            # if chunk_json and len(str(chunk_json)) > 10:  # Chỉ log nếu chunk có nội dung đáng kể
+                            #     self.logger.warning(f"[stream_message] No text found in chunk: {chunk_json}")
+                            # else:
+                            #     self.logger.debug(f"[stream_message] Skipping empty/metadata chunk: {chunk_json}")
+                            pass
                     except json.JSONDecodeError as e:
-                        self.logger.warning(f"[stream_message] Failed to parse JSON: {e}, chunk: {repr(chunk_str)}")
+                        # self.logger.warning(f"[stream_message] Failed to parse JSON: {e}, chunk: {repr(chunk_str)}")
                         continue
                     except Exception as e:
-                        self.logger.error(f"[stream_message] Error processing chunk: {e}")
+                        # self.logger.error(f"[stream_message] Error processing chunk: {e}")
                         continue
         except Exception as e:
-            self.logger.error(f"Error in stream_message: {e}")
+            # self.logger.error(f"Error in stream_message: {e}")
             yield f"[STREAM_ERROR] {str(e)}"
 
 
