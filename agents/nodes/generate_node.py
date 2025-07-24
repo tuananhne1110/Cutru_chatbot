@@ -7,9 +7,21 @@ from agents.prompt.prompt_manager import prompt_manager
 from langchain_core.messages import AIMessage
 from langfuse.decorators import observe, langfuse_context
 import boto3
+import yaml
 
 logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
+
+def load_llm_config(yaml_path="config/config.yaml"):
+    try:
+        with open(yaml_path, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get("llm", {})
+    except Exception:
+        return {}
+llm_cfg = load_llm_config()
+prompt_version = llm_cfg.get("prompt_version", "v1")
+model_name = llm_cfg.get("default_model_name", "us.meta.llama4-scout-17b-instruct-v1:0")
 
 @observe(as_type="generation")
 async def generate_answer(state: ChatState) -> ChatState:
@@ -18,8 +30,6 @@ async def generate_answer(state: ChatState) -> ChatState:
     docs = state["context_docs"]
     intent = state["intent"]
     history = state.get("messages", [])
-    prompt_version = "v1"  # Cập nhật nếu có version hóa template
-    model_name = "us.meta.llama4-scout-17b-instruct-v1:0"   # Đúng tên model Bedrock
     if not docs:
         logger.warning(f"[LangGraph] No docs found for question: {question}")
         state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn."

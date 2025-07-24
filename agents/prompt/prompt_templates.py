@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Dict, List
 import logging
+import os
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +17,18 @@ class CategoryType(Enum):
 
 class PromptTemplates:
     """Quản lý các prompt template chuyên biệt cho từng category"""
-    
-    def __init__(self):
-        # Template base chung cho tất cả categories
-        self.base_template = """
+    def __init__(self, config_path: str = "config/config.yaml"):
+        self.base_template = self._load_base_template(config_path)
+
+    def _load_base_template(self, config_path: str) -> str:
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                pt = config.get("prompt_templates", {})
+                if pt and pt.get("base_template"):
+                    return pt["base_template"]
+        # fallback nếu không có file hoặc key
+        return """
         Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
         VAI TRÒ VÀ TRÁCH NHIỆM:
         - Trả lời chính xác, chi tiết và đầy đủ theo câu hỏi bên dưới
@@ -34,7 +44,7 @@ class PromptTemplates:
 
         TRẢ LỜI:"""
 
-       
+   
     def get_prompt_by_category(self) -> str:
         """
         Lấy prompt template theo category

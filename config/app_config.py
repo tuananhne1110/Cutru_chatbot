@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from supabase import create_client, Client
 from typing import Optional
+import yaml
 
 load_dotenv()
 
@@ -11,8 +12,16 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Initialization model embedding
-embedding_model = SentenceTransformer("Alibaba-NLP/gte-multilingual-base", trust_remote_code=True)
+def load_embedding_config(yaml_path="config/config.yaml"):
+    try:
+        with open(yaml_path, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get("embedding", {})
+    except Exception:
+        return {}
+embedding_cfg = load_embedding_config()
+embedding_model_name = embedding_cfg.get("model_name", "Alibaba-NLP/gte-multilingual-base")
+embedding_model = SentenceTransformer(embedding_model_name, trust_remote_code=True)
 
 qdrant_client = QdrantClient(
     # url=os.getenv("QDRANT_URL"),

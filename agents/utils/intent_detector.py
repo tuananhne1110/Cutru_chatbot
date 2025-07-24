@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 from enum import Enum
 import boto3
 from langfuse.decorators import observe
+import yaml
 # from .prompt_templates import prompt_templates, CategoryType
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,19 @@ Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
  - các câu truy vấn liên quan đến hai cơ sơ dữ liệu khác nhau thì nên trả về 2 cơ sơ dữ liệu
 
 """
+
+def load_intent_config(yaml_path="config/config.yaml"):
+    try:
+        with open(yaml_path, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get("intent", {})
+    except Exception:
+        return {}
+
+intent_cfg = load_intent_config()
+ROUTER_SYSTEM_PROMPT = intent_cfg.get("router_system_prompt", ROUTER_SYSTEM_PROMPT)
+KEYWORDS = intent_cfg.get("keywords", {})
+
 
 @dataclass
 class ToolSpec:

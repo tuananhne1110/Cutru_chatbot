@@ -3,14 +3,26 @@ import hashlib
 import json
 import numpy as np
 import os
+import yaml
 
 redis_host = os.getenv("REDIS_HOST", "localhost")
 redis_port = int(os.getenv("REDIS_PORT", "6379"))
 r = redis.Redis(host=redis_host, port=redis_port, db=0)
 
-CACHE_KEY = "semantic_prompt_cache"
-CACHE_LIMIT = 1000  # Giới hạn số lượng cache
-PARAPHRASE_CACHE_PREFIX = "paraphrase_cache:"
+def load_cache_config(yaml_path="config/config.yaml"):
+    try:
+        with open(yaml_path, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get("cache", {})
+    except Exception:
+        return {}
+
+cache_cfg = load_cache_config()
+CACHE_LIMIT = cache_cfg.get("cache_limit", 1000)
+CHUNK_SIZE = cache_cfg.get("chunk_size", 100)
+THRESHOLD = cache_cfg.get("threshold", 0.85)
+PARAPHRASE_CACHE_PREFIX = cache_cfg.get("paraphrase_cache_prefix", "paraphrase_cache:")
+CACHE_KEY = cache_cfg.get("cache_key", "semantic_prompt_cache")
 
 def cosine_similarity(a, b):
     a = np.array(a)

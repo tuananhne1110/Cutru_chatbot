@@ -38,7 +38,7 @@ intent:
      - các câu truy vấn liên quan đến hai cơ sơ dữ liệu khác nhau thì nên trả về 2 cơ sơ dữ liệu
   keywords:
     law: ["luật", "điều", "khoản", "quy định", "ban hành", "nghị định", "thông tư"]
-    form: ["mẫu", "biểu mẫu", "điền", "CT01", "CT02", "NA17", "tờ khai", "hướng dẫn điền"]
+    form: ["mẫu", "biểu mẫu", "điền", "CT01", "CT02", "NA17", "tờ khai"]
     term: ["thuật ngữ", "định nghĩa", "là gì", "nghĩa là", "giải thích"]
     procedure: ["thủ tục", "quy trình", "đăng ký", "cư trú", "tạm trú", "thường trú"]
 prompt_templates:
