@@ -1,0 +1,15 @@
+claude:
+  model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0"
+  max_tokens: 1000
+  temperature: 0.1
+  top_p: 0.99
+  top_k: null
+  anthopic_version: "bedrock-2023-05-31"
+  stop_sequences: null
+llama:
+  model_id: "us.meta.llama4-scout-17b-instruct-v1:0"
+  max_gen_len: 2000
+  temperature: 0.5
+  top_p: 0.9
+  top_k: null
+  stop_sequences: null 

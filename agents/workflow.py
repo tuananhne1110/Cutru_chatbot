@@ -10,7 +10,6 @@ from agents.nodes.memory_node import update_memory
 from agents.nodes.semantic_cache_node import semantic_cache
 from agents.nodes.guardrails_node import guardrails_input
 
-# Optional: LangChain integration stub
 class LangChainRAGComponents:
     def __init__(self):
         self.embeddings = None

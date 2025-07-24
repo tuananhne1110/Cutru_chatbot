@@ -1,40 +1,113 @@
 import time
 import asyncio
 import logging
+import traceback
 from agents.state import ChatState
 from agents.prompt.prompt_manager import prompt_manager
 from langchain_core.messages import AIMessage
+from langfuse.decorators import observe, langfuse_context
+import boto3
 
 logger = logging.getLogger(__name__)
+bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
 
+@observe(as_type="generation")
 async def generate_answer(state: ChatState) -> ChatState:
     start_time = time.time()
     question = state["question"]
     docs = state["context_docs"]
     intent = state["intent"]
+    history = state.get("messages", [])
+    prompt_version = "v1"  # Cập nhật nếu có version hóa template
+    model_name = "us.meta.llama4-scout-17b-instruct-v1:0"   # Đúng tên model Bedrock
     if not docs:
         logger.warning(f"[LangGraph] No docs found for question: {question}")
         state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn."
+        logger.info(f"[Langfuse] Logging input/model/metadata: input={question}, model={model_name}")
+        langfuse_context.update_current_observation(
+            input=question,
+            model=model_name,
+            metadata={
+                "session_id": state["session_id"],
+                "intent": str(intent),
+                "prompt_version": prompt_version,
+                "system_prompt": "",
+                "history": str(history[:5]),
+            }
+        )
+        logger.info(f"[Langfuse] Logging usage_details=0, cost_details=0 (no docs)")
+        langfuse_context.update_current_observation(
+            usage_details={"input": 0, "output": 0},
+            cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
+        )
         return state
     loop = asyncio.get_running_loop()
     prompt = prompt_manager.create_dynamic_prompt(
         question,
         [{"content": doc.page_content, "page_content": doc.page_content, **doc.metadata} for doc in docs]
     )
+    system_prompt = prompt_manager.prompt_templates.base_template
     state["prompt"] = prompt
+    logger.info(f"[Langfuse] Logging input/model/metadata: input={prompt}, model={model_name}")
+    langfuse_context.update_current_observation(
+        input=prompt,
+        model=model_name,
+        metadata={
+            "session_id": state["session_id"],
+            "intent": str(intent),
+            "prompt_version": prompt_version,
+            "system_prompt": system_prompt,
+            "history": str(history[:5]),
+        }
+    )
+    token_input = 0
+    token_output = 0
     try:
         from services.llm_service import call_llm_stream
         answer_chunks = []
-        for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, "llama"))):
+        raw_llm_response = []
+        for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, model_name))):
             answer_chunks.append(chunk)
+            raw_llm_response.append(chunk)
         answer = "".join(answer_chunks)
         logger.info(f"[LangGraph] Đã gọi xong call_llm_stream, answer[:100]: {str(answer)[:100]}")
+        if hasattr(call_llm_stream, "last_usage"):
+            usage = getattr(call_llm_stream, "last_usage", {})
+            token_input = usage.get("prompt_tokens", 0)
+            token_output = usage.get("completion_tokens", 0)
+            cost_input = (token_input / 1000) * 0.00017
+            cost_output = (token_output / 1000) * 0.00066
+            cost_total = cost_input + cost_output
+            logger.info(f"[Langfuse] Logging usage_details and cost_details: input={token_input}, output={token_output}, cost={cost_total}")
+            langfuse_context.update_current_observation(
+                usage_details={
+                    "input": token_input,
+                    "output": token_output
+                },
+                cost_details={
+                    "input": cost_input,
+                    "output": cost_output,
+                    "total": cost_total
+                }
+            )
+        else:
+            logger.info("[Langfuse] Logging usage_details=0, cost_details=0 (no usage info)")
+            langfuse_context.update_current_observation(
+                usage_details={"input": 0, "output": 0},
+                cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
+            )
         state["answer"] = answer
         state["answer_chunks"] = answer_chunks 
     except Exception as e:
         logger.error(f"Error calling LLM: {e}")
+        tb = traceback.format_exc()
         state["answer"] = "Xin lỗi, có lỗi xảy ra khi xử lý câu hỏi của bạn."
         state["error"] = "llm_error"
+        logger.info("[Langfuse] Logging usage_details=0, cost_details=0 (exception)")
+        langfuse_context.update_current_observation(
+            usage_details={"input": 0, "output": 0},
+            cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
+        )
     sources = []
     for doc in docs[:3]:
         file_url = doc.metadata.get("file_url", "")

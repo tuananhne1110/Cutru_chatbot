@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict, List, Tuple
 from enum import Enum
 import boto3
+from langfuse.decorators import observe
 # from .prompt_templates import prompt_templates, CategoryType
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,8 @@ class IntentType(Enum):
 
 COLLECTION_MAP = {
     "procedure": "thủ tục hành chính về lĩnh vực cư trú",
-    "law": "luật cư trú",
-    "form": "giấy tờ/biểu mẫu về lĩnh vực cư trú",
+    "law": "văn bản pháp lý về lĩnh vực cư trú",
+    "form": "hướng dẫn điền giấy tờ/biểu mẫu về lĩnh vực cư trú",
     "term": "thuật ngữ/định nghĩa về lĩnh vực cư trú",
     "template": "biểu mẫu gốc được dùng làm nền để trích xuất dữ liệu tự động hoặc điền thông tin trong lĩnh vực cư trú",
     "general": "các tình huống giao tiếp thông thường hoặc câu hỏi không liên quan đến cư trú" 
@@ -33,7 +34,7 @@ COLLECTION_MAP = {
 COLLECTION_DESCRIPTIONS = {
     IntentType.PROCEDURE: "Tra cứu thủ tục hành chính trong lĩnh vực cư trú: tên thủ tục, trình tự, thành phần hồ sơ, cách thực hiện.",
     IntentType.LAW: "Tra cứu văn bản pháp lý, căn cứ pháp lý, chương điều khoản, mục liên quan đến cư trú,",
-    IntentType.FORM: "Tìm kiếm biểu mẫu, giấy tờ dùng trong lĩnh vực cư trú.",
+    IntentType.FORM: "Hướng dẫn điền biểu mẫu, giấy tờ dùng trong lĩnh vực cư trú.",
     IntentType.TERM: "Tìm kiếm định nghĩa, thuật ngữ pháp lý trong lĩnh vực cư trú.",
     IntentType.TEMPLATE: "Biểu mẫu hành chính chính thức dùng để công dân hoặc người nước ngoài khai báo, đăng ký, thay đổi thông tin cư trú. Bao gồm các tờ khai như: Phiếu khai báo tạm trú, Tờ khai thay đổi thông tin cư trú,... thường được sử dụng trong các thủ tục hành chính liên quan đến cư trú.",
     IntentType.GENERAL: "Trả lời các câu hỏi giao tiếp đơn giản, chào hỏi, cảm ơn, giới thiệu,... hoặc những nội dung không liên quan đến cư trú."
@@ -156,11 +157,11 @@ class IntentDetector:
         self.bedrock_runtime_client = boto3.client(service_name=service_name, region_name = region_name)
         self.model_id = model_id
     
-    def detect_intent(self, query: str) -> List[Tuple[IntentType, str]]:
+    @observe()
+    def detect_intent(self, query: str, trace_id: str = None) -> List[Tuple[IntentType, str]]:
         messages = [{"role": "user", "content": [{"text": query}]}]
         tool_config = {"tools": [tool.to_dict() for tool in TOOL_CONFIGS]}
         list_intent_type: List[Tuple[IntentType, str]] = []
-
         try:
             response = self.bedrock_runtime_client.converse(
                 modelId=self.model_id,
@@ -193,9 +194,7 @@ class IntentDetector:
                         list_intent_type.append((IntentType.GENERAL, query))
                 else:
                     list_intent_type.append((IntentType.GENERAL, query))
-
         except Exception as e:
-            # self.logger.error("Lỗi khi gọi converse để phát hiện intent", exc_info=True)
             return [(IntentType.GENERAL, query)]
 
         return list_intent_type

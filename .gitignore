@@ -47,13 +47,6 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Docker
-# docker/
-# docker-compose.yml
-# docker-compose.override.yml
-# Dockerfile.backend
-# Dockerfile.frontend
-
 # Database
 *.db
 *.sqlite
@@ -171,3 +164,9 @@ data/processed/
 backup/
 *.backup
 *.bak
+
+/data/
+
+.ipynb_checkpoints/
+.ipynb_checkpoints/*
+*.ipynb 

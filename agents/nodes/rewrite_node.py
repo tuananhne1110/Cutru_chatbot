@@ -3,9 +3,11 @@ import asyncio
 from agents.utils.query_rewriter import QueryRewriter
 from agents.utils.context_manager import context_manager
 from agents.state import ChatState
+from langfuse.decorators import observe
 
 query_rewriter = QueryRewriter()
 
+@observe()
 async def rewrite_query_with_context(state: ChatState) -> ChatState:
     start_time = time.time()
     question = state["question"]
@@ -19,6 +21,7 @@ async def rewrite_query_with_context(state: ChatState) -> ChatState:
             messages_dict.append(m)
     loop = asyncio.get_running_loop()
     context_string, _ = await loop.run_in_executor(None, context_manager.process_conversation_history, messages_dict, question)
+    # KHÔNG tạo trace mới ở đây nữa, chỉ tạo trace root ở node generate_answer
     rewritten = await loop.run_in_executor(None, query_rewriter.rewrite_with_context, question, context_string)
     state["rewritten_query"] = rewritten
     duration = time.time() - start_time

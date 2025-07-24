@@ -24,7 +24,7 @@ def call_llm_stream(prompt, model="claude", max_tokens=4000, temperature=0.5):
         yield "Xin lỗi, không thể kết nối đến AWS Bedrock. Vui lòng thử lại sau."
         return
     try:
-        # Create configuration based on model type
+        import logging
         if model.lower() == "claude":
             config = ClaudeConfig(
                 max_tokens=max_tokens,
@@ -32,28 +32,50 @@ def call_llm_stream(prompt, model="claude", max_tokens=4000, temperature=0.5):
             )
             message = bedrock_client.create_message("user", prompt)
             response = bedrock_client.generate_message([message], config_overrides=config)
+            logging.info(f"[DEBUG] Raw Bedrock Claude response: {response}")
             handler = ClaudeHandler(config)  # type: ignore
             response_text = handler.extract_response_text(response)
             chunk_size = 100
             if not response_text:
                 yield "Xin lỗi, không có dữ liệu trả về từ LLM."
                 return
-            for i in range(0, len(response_text), chunk_size):
-                chunk = response_text[i:i + chunk_size]
-                yield chunk
+            # Claude: lấy usage từ response['usage']
+            usage = response.get('usage', {})
+            prompt_tokens = usage.get('inputTokens', 0)
+            completion_tokens = usage.get('outputTokens', 0)
         else:
-            # Llama: sử dụng streaming
             config = LlamaConfig(
                 model_id="us.meta.llama4-scout-17b-instruct-v1:0",
                 max_gen_len=max_tokens,  
                 temperature=temperature  
             )
             message = bedrock_client.create_message("user", prompt)
-            for chunk in bedrock_client.stream_message([message], config_overrides=config):
-                if chunk:
-                    yield chunk
+            response = bedrock_client.generate_message([message], config_overrides=config)
+            logging.info(f"[DEBUG] Raw Bedrock Llama response: {response}")
+            handler = LlamaHandler(config)
+            response_text = handler.extract_response_text(response)
+            chunk_size = 100
+            if not response_text:
+                yield "Xin lỗi, không có dữ liệu trả về từ LLM."
+                return
+            # Llama: lấy usage từ trường gốc
+            prompt_tokens = response.get('prompt_token_count', 0)
+            completion_tokens = response.get('generation_token_count', 0)
+        call_llm_stream.last_usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        logging.info(f"[LLM USAGE] {model}: input={prompt_tokens}, output={completion_tokens}")
+        for i in range(0, len(response_text), chunk_size):
+            yield response_text[i:i + chunk_size]
     except Exception as e:
         yield f"Xin lỗi, có lỗi xảy ra: {str(e)}"
+        call_llm_stream.last_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
+        import logging
+        logging.error(f"[LLM ERROR] {str(e)}")
 
 def call_llm_full(prompt, model="claude", max_tokens=4000, temperature=0.3):  # Tăng max_tokens và temperature
     """

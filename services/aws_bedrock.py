@@ -8,6 +8,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from functools import wraps
 from abc import ABC, abstractmethod
 import time
+import yaml
 
 class ModelVersion(Enum):
     # Claude Models
@@ -493,3 +494,14 @@ def create_claude_config(**kwargs) -> ClaudeConfig:
 def create_llama_config(**kwargs) -> LlamaConfig:
     """Tạo LlamaConfig với các tham số tùy chọn"""
     return LlamaConfig(**kwargs)
+
+def load_config_from_yaml(yaml_path: str, model_type: str = "claude") -> Union[ClaudeConfig, LlamaConfig]:
+    """Load config từ file yaml cho Claude hoặc Llama"""
+    with open(yaml_path, 'r') as f:
+        config_dict = yaml.safe_load(f)
+    if model_type.lower() == "claude":
+        return ClaudeConfig(**config_dict.get("claude", {}))
+    elif model_type.lower() == "llama":
+        return LlamaConfig(**config_dict.get("llama", {}))
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")

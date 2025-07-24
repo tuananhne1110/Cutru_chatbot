@@ -44,10 +44,7 @@ class PromptManager:
             context=formatted_context,
             question=question
         )
-        
-   
         return final_prompt
     
-
 # Singleton instance
 prompt_manager = PromptManager() 
