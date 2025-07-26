@@ -175,39 +175,5 @@ class ContextManager:
         
         return "\n".join(summary_parts)
     
-    # def create_optimized_prompt(self, 
-    #                           base_prompt: str, 
-    #                           context_string: str, 
-    #                           current_question: str) -> str:
-    #     """
-    #     Tạo prompt tối ưu với cấu trúc rõ ràng
-        
-    #     Args:
-    #         base_prompt: Prompt cơ bản từ prompt manager
-    #         context_string: Context string đã xử lý
-    #         current_question: Câu hỏi hiện tại
-            
-    #     Returns:
-    #         str: Prompt tối ưu
-    #     """
-    #     if not context_string:
-    #         return base_prompt
-        
-    #     # Tìm vị trí để chèn context
-    #     if "VAI TRÒ VÀ TRÁCH NHIỆM:" in base_prompt:
-    #         # Chèn sau phần system prompt
-    #         system_end = base_prompt.find("CÂU HỎI:")
-    #         if system_end != -1:
-    #             optimized_prompt = (
-    #                 base_prompt[:system_end] + 
-    #                 f"\n\n{context_string}\n" +
-    #                 base_prompt[system_end:]
-    #             )
-    #             return optimized_prompt
-        
-    #     # Fallback: thêm vào đầu
-    #     return f"{base_prompt}\n\n{context_string}\n\nCÂU HỎI HIỆN TẠI: {current_question}"
-    
-    
 # Singleton instance
 context_manager = ContextManager()

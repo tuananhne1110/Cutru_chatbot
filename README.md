@@ -275,7 +275,7 @@ AMBIGUOUS → all collections with weights
 6. retrieve (Semantic Retrieval)
    ├── Multi-collection search
    ├── Intent-based routing
-   ├── Top 50 candidates retrieval
+   ├── Top 30 candidates retrieval
    └── BGE reranking
    ↓
 7. generate (Answer Generation)
@@ -296,23 +296,6 @@ AMBIGUOUS → all collections with weights
 10. Response
      └── Answer + Sources + Metadata
 ```
-
-### 📊 Performance Metrics
-
-| Bước | Thời gian trung bình | Ghi chú |
-|------|---------------------|---------|
-| Intent Detection | 0.001s | Rule-based, rất nhanh |
-| Semantic Cache | 0.01s | Redis lookup |
-| Guardrails Input | 0.1-2.0s | LlamaGuard Input Policy |
-| Query Rewrite | 0.001-0.5s | Rule-based nhanh, LLM chậm |
-| Embedding | 0.8s | Vietnamese PhoBERT |
-| Multi-collection Search | 0.03s | 4 collections, 50 candidates |
-| BGE Reranking | 0.5-2.0s | Cross-encoder inference |
-| Dynamic Prompt | 0.002s | Template selection |
-| LLM Generation | 1.2s | Llama 4 Scout 17B |
-| Guardrails Output | 0.1-2.0s | LlamaGuard Output Policy |
-| Memory Update | 0.01s | Context processing |
-| **Tổng** | **2.1-8.5s** | **Trung bình ~4s** |
 
 ## 🚀 Cài Đặt & Triển Khai
 

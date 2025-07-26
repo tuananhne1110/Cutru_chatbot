@@ -34,13 +34,25 @@ intent:
     4. **thuat_ngu_cu_tru**: Truy vấn cần định nghĩa, giải thích các thuật ngữ, khái niệm chuyên ngành liên quan đến cư trú.
     6. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
     ## Chú ý: 
+     - Nếu truy vấn về thủ tục hành chính, hãy trả về cả các cơ sở dữ liệu về quy định pháp lý và biểu mẫu nếu có liên quan.
+     - Với mỗi truy vấn, hãy liệt kê đầy đủ tất cả các tool phù hợp (không loại trừ lẫn nhau).
      - khi câu truy vấn là liên quan đến các trường hơp hay tình huống cụ thể thì Truy vấn liên quan đến văn bản pháp lý
      - các câu truy vấn liên quan đến hai cơ sơ dữ liệu khác nhau thì nên trả về 2 cơ sơ dữ liệu
+  
   keywords:
     law: ["luật", "điều", "khoản", "quy định", "ban hành", "nghị định", "thông tư"]
     form: ["mẫu", "biểu mẫu", "điền", "CT01", "CT02", "NA17", "tờ khai"]
     term: ["thuật ngữ", "định nghĩa", "là gì", "nghĩa là", "giải thích"]
     procedure: ["thủ tục", "quy trình", "đăng ký", "cư trú", "tạm trú", "thường trú"]
+  
+  intent_to_collections:
+    procedure: [procedure_chunks, legal_chunks, template_chunks]
+    law: [legal_chunks]
+    form: [form_chunks, template_chunks]
+    term: [term_chunks, legal_chunks]
+    template: [template_chunks]
+    general: [general_chunks]
+
 prompt_templates:
   base_template: |
     Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.

@@ -77,7 +77,7 @@ graph TD
 - **retrieve:** Tìm kiếm semantic trong các collection tương ứng.
 - **Logic:** 
   - Dựa trên tất cả intents để chọn collections.
-  - Tìm kiếm top 50 candidates từ mỗi collection.
+  - Tìm kiếm top 30 candidates từ mỗi collection.
   - Sử dụng BGE reranker để sắp xếp lại kết quả.
   - Đặc biệt xử lý LAW intent: gom nhóm theo parent_id và merge chunks.
 - **Output:** Top 8 context documents.
@@ -133,7 +133,7 @@ sequenceDiagram
         L->>L: guardrails_input
         L->>L: rewrite (với context từ lịch sử)
         L->>L: retrieve
-        L->>Q: Semantic search (4 collections, 50 candidates)
+        L->>Q: Semantic search (4 collections, 30 candidates)
         Q-->>L: Top candidates
         L->>L: BGE reranking
         L->>L: generate
@@ -175,7 +175,7 @@ sequenceDiagram
 - **Mục đích:** Tìm các tài liệu liên quan nhất để trả lời câu hỏi.
 - **Hoạt động:** 
   - Tìm kiếm trong các collection tương ứng với intent.
-  - Lấy top 50 candidates từ mỗi collection.
+  - Lấy top 30 candidates từ mỗi collection.
   - Sử dụng BGE reranker để sắp xếp lại theo độ phù hợp.
   - Đặc biệt xử lý LAW intent: gom nhóm và merge chunks theo parent_id.
 - **Kết quả:** Top 8 context documents có độ phù hợp cao nhất.

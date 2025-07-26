@@ -338,3 +338,21 @@ def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):
     )
     # results đã là list các điểm
     return results
+
+def search_qdrant_by_id(collection_name, doc_id, limit=1):
+    """
+    Truy vấn Qdrant lấy các chunk theo id (thường dùng để lấy điều cha của khoản).
+    """
+    filter_condition = {
+        "must": [
+            {"key": "id", "match": {"value": doc_id}}
+        ]
+    }
+    results, _ = qdrant_client.scroll(
+        collection_name=collection_name,
+        scroll_filter=filter_condition,
+        limit=limit,
+        with_payload=True,
+        with_vectors=False
+    )
+    return results

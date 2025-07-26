@@ -30,8 +30,6 @@ COLLECTION_MAP = {
     "general": "các tình huống giao tiếp thông thường hoặc câu hỏi không liên quan đến cư trú" 
 }
 
-
-
 COLLECTION_DESCRIPTIONS = {
     IntentType.PROCEDURE: "Tra cứu thủ tục hành chính trong lĩnh vực cư trú: tên thủ tục, trình tự, thành phần hồ sơ, cách thực hiện.",
     IntentType.LAW: "Tra cứu văn bản pháp lý, căn cứ pháp lý, chương điều khoản, mục liên quan đến cư trú,",
@@ -60,8 +58,8 @@ Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
 4. **thuat_ngu_cu_tru**: Truy vấn cần định nghĩa, giải thích các thuật ngữ, khái niệm chuyên ngành liên quan đến cư trú.
 6. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
 ## Chú ý: 
- - khi câu truy vấn là liên quan đến các trường hơp hay tình huống cụ thể thì Truy vấn liên quan đến văn bản pháp lý
- - các câu truy vấn liên quan đến hai cơ sơ dữ liệu khác nhau thì nên trả về 2 cơ sơ dữ liệu
+    - Với mỗi truy vấn, bạn **cần liệt kê đầy đủ tất cả các cơ sở dữ liệu liên quan**, không bỏ sót (có thể từ 1 đến nhiều).
+    - Nếu truy vấn thuộc về nhiều lĩnh vực cùng lúc, trả về nhiều cơ sở dữ liệu.
 
 """
 
@@ -211,7 +209,22 @@ class IntentDetector:
         except Exception as e:
             return [(IntentType.GENERAL, query)]
 
-        return list_intent_type
+        # Loại trùng intent (theo loại intent, giữ lại query đầu tiên cho mỗi intent)
+        seen = set()
+        unique_intents = []
+        for intent, q in list_intent_type:
+            if intent not in seen:
+                unique_intents.append((intent, q))
+                seen.add(intent)
+
+        # Nếu có PROCEDURE thì tự động thêm LAW và FORM nếu chưa có
+        has_procedure = any(intent == IntentType.PROCEDURE for intent, _ in unique_intents)
+        if has_procedure:
+            for extra_intent in [IntentType.LAW, IntentType.FORM]:
+                if not any(intent == extra_intent for intent, _ in unique_intents):
+                    unique_intents.append((extra_intent, query))
+
+        return unique_intents
 
 
     def get_search_collections(self, intents: List[Tuple[IntentType, str]]) -> List[str]:

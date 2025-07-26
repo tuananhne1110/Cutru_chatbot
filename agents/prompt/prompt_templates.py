@@ -84,11 +84,17 @@ class PromptTemplates:
                 law_name = chunk.get("law_name", "Luật")
                 article = chunk.get("article", "")
                 chapter = chunk.get("chapter", "")
+                clause = chunk.get("clause", "")
+                point = chunk.get("point", "")
                 source_info = f"[{law_name}"
+                if chapter:
+                    source_info += f" - Chương {chapter}"
                 if article:
                     source_info += f" - {article}"
-                if chapter:
-                    source_info += f" - {chapter}"
+                if clause:
+                    source_info += f" - Khoản {clause}"
+                if point:
+                    source_info += f" - Điểm {point}"
                 source_info += "]"
                 context_parts.append(f"{source_info}\n{content}")
             elif chunk['category'] == "form":
