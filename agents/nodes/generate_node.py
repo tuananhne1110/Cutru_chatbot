@@ -26,6 +26,13 @@ model_name = llm_cfg.get("default_model_name", "us.meta.llama4-scout-17b-instruc
 @observe(as_type="generation")
 async def generate_answer(state: ChatState) -> ChatState:
     start_time = time.time()
+    
+    # Kiểm tra nếu đã có error từ guardrails
+    if state.get("error") == "input_validation_failed":
+        logger.info(f"[Generate] Skipping generation due to guardrails error")
+        state["processing_time"]["answer_generation"] = time.time() - start_time
+        return state
+    
     question = state["question"]
     docs = state["context_docs"]
     intent = state["intent"]
@@ -81,59 +88,19 @@ async def generate_answer(state: ChatState) -> ChatState:
             raw_llm_response.append(chunk)
         answer = "".join(answer_chunks)
         logger.info(f"[LangGraph] Đã gọi xong call_llm_stream, answer[:100]: {str(answer)[:100]}")
-        if hasattr(call_llm_stream, "last_usage"):
-            usage = getattr(call_llm_stream, "last_usage", {})
-            token_input = usage.get("prompt_tokens", 0)
-            token_output = usage.get("completion_tokens", 0)
-            cost_input = (token_input / 1000) * 0.00017
-            cost_output = (token_output / 1000) * 0.00066
-            cost_total = cost_input + cost_output
-            logger.info(f"[Langfuse] Logging usage_details and cost_details: input={token_input}, output={token_output}, cost={cost_total}")
-            langfuse_context.update_current_observation(
-                usage_details={
-                    "input": token_input,
-                    "output": token_output
-                },
-                cost_details={
-                    "input": cost_input,
-                    "output": cost_output,
-                    "total": cost_total
-                }
-            )
-        else:
-            logger.info("[Langfuse] Logging usage_details=0, cost_details=0 (no usage info)")
-            langfuse_context.update_current_observation(
-                usage_details={"input": 0, "output": 0},
-                cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
-            )
         state["answer"] = answer
-        state["answer_chunks"] = answer_chunks 
-    except Exception as e:
-        logger.error(f"Error calling LLM: {e}")
-        tb = traceback.format_exc()
-        state["answer"] = "Xin lỗi, có lỗi xảy ra khi xử lý câu hỏi của bạn."
-        state["error"] = "llm_error"
-        logger.info("[Langfuse] Logging usage_details=0, cost_details=0 (exception)")
+        state["answer_chunks"] = answer_chunks
+        # Log usage details
+        logger.info(f"[Langfuse] Logging usage_details={token_input}/{token_output}, cost_details=0")
         langfuse_context.update_current_observation(
-            usage_details={"input": 0, "output": 0},
+            usage_details={"input": token_input, "output": token_output},
             cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
         )
-    sources = []
-    for doc in docs[:3]:
-        file_url = doc.metadata.get("file_url", "")
-        url = doc.metadata.get("url", "")
-        code = doc.metadata.get("code", "")
-        title = doc.metadata.get("name", doc.metadata.get("form_name", doc.metadata.get("procedure_name", "N/A")))
-        source = {
-            "title": title,
-            "code": code,
-            "file_url": file_url,
-            "url": url,
-            "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
-            "metadata": doc.metadata
-        }
-        sources.append(source)
-    state["sources"] = sources
+    except Exception as e:
+        logger.error(f"[LangGraph] Error in generate_answer: {e}")
+        tb = traceback.format_exc()
+        state["error"] = "generation_exception"
+        state["answer"] = f"Xin lỗi, có lỗi xảy ra khi xử lý câu hỏi: {str(e)}"
     duration = time.time() - start_time
     state["processing_time"]["answer_generation"] = duration
     logger.info(f"[LangGraph] Answer generation: {duration:.4f}s")

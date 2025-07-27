@@ -9,6 +9,13 @@ logger = logging.getLogger(__name__)
 
 async def validate_output(state: ChatState) -> ChatState:
     start_time = time.time()
+    
+    # Kiểm tra nếu input đã bị chặn bởi guardrails
+    if state.get("error") == "input_validation_failed":
+        logger.info(f"[Validate] Skipping output validation due to input guardrails error")
+        state["processing_time"]["output_validation"] = time.time() - start_time
+        return state
+    
     answer = state["answer"] or ""
     output_safety = guardrails.validate_output(answer)
     try:
@@ -18,8 +25,9 @@ async def validate_output(state: ChatState) -> ChatState:
             state["error"] = "output_validation_failed"
             logger.warning(f"[LangGraph] Output validation failed: {output_safety['block_reason']}")
         else:
-            pass
+            logger.info(f"[LangGraph] Output validation passed")
     except Exception as e:
+        logger.error(f"[LangGraph] Exception in output validation: {e}")
         tb = traceback.format_exc()
         state["error"] = "output_validation_exception"
     duration = time.time() - start_time

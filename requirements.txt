@@ -44,7 +44,7 @@ redis==6.2.0
 boto3==1.39.0
 
 # Guardrails
-# guardrails-ai==0.6.6
+guardrails-ai==0.6.6
 
 # Torch
 torch==2.7.1

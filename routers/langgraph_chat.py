@@ -53,15 +53,31 @@ async def langgraph_chat_stream(request: ChatRequest):
         question = request.question
         initial_state: ChatState = create_initial_state(question, messages, session_id)
         config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
-        # Run workflow to get prompt
+        # Run workflow to get result
         result = await rag_workflow.ainvoke(initial_state, config=config)
+        
+        # Kiểm tra nếu guardrails đã chặn
+        if result.get("error") == "input_validation_failed":
+            answer = result.get("answer", "Xin lỗi, tôi không thể hỗ trợ câu hỏi này. Vui lòng hỏi về lĩnh vực pháp luật Việt Nam.")
+            def guardrails_blocked_stream():
+                # Stream từng ký tự của answer
+                for char in answer:
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': char})}\n\n"
+                # Gửi chunk done để báo hiệu kết thúc
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return StreamingResponse(guardrails_blocked_stream(), media_type="text/event-stream")
+        
         prompt = result.get("prompt")
         sources = result.get("sources", [])
+        
         if not prompt:
             answer = result.get("answer", "Xin lỗi, không thể tạo prompt.")
             def fallback_stream():
-                yield f"data: {{\"type\": \"error\", \"content\": \"{answer}\"}}\n\n"
+                for char in answer:
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': char})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return StreamingResponse(fallback_stream(), media_type="text/event-stream")
+        
         # Stream LLM output
         from services.llm_service import call_llm_stream
         def stream_llm():

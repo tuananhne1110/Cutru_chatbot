@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 @observe()
 async def retrieve_context(state: ChatState) -> ChatState:
     start_time = time.time()
+    
+    # Kiểm tra nếu đã có error từ guardrails
+    if state.get("error") == "input_validation_failed":
+        logger.info(f"[Retrieve] Skipping retrieval due to guardrails error")
+        state["processing_time"]["context_retrieval"] = time.time() - start_time
+        return state
+    
     query = state.get("rewritten_query") or state["question"] or ""
     # Nếu query quá ngắn hoặc là follow-up, nối với câu hỏi trước
     if len(query.split()) < 6 and len(state["messages"]) > 1:
@@ -37,41 +44,43 @@ async def retrieve_context(state: ChatState) -> ChatState:
         logger.error("[Retrieve] Intent is None. State: %s", state)
         raise ValueError("Intent must not be None in retrieve_context")
     all_collections = set()
-    for intent_tuple in all_intents:
-        intent, _ = intent_tuple
-        collections = intent_detector.get_search_collections([(intent, query)])
-        logger.info(f"[Retrieve] Intent {intent} mapped to collections: {collections}")
-        all_collections.update(collections)
+    for intent, confidence in all_intents:
+        if confidence > 0.1:  # Chỉ xét intent có confidence > 10%
+            if intent == IntentType.LAW:
+                all_collections.add("legal_chunks")
+            elif intent == IntentType.FORM:
+                all_collections.add("form_chunks")
+            elif intent == IntentType.TERM:
+                all_collections.add("term_chunks")
+            elif intent == IntentType.PROCEDURE:
+                all_collections.add("procedure_chunks")
+            elif intent == IntentType.GENERAL:
+                all_collections.add("general_chunks")
     collections = list(all_collections)
     logger.info(f"[Retrieve] Collections to search (from all intents): {collections}")
+    if not collections:
+        logger.warning("[Retrieve] No collections found for intents")
+        state["context_docs"] = []
+        state["processing_time"]["context_retrieval"] = time.time() - start_time
+        return state
     loop = asyncio.get_running_loop()
-    logger.info(f"[Retrieve] Getting embedding for query: {query}")
     embedding = await loop.run_in_executor(None, get_embedding, query)
+    logger.info(f"[Retrieve] Getting embedding for query: {query}")
     all_docs = []
     for collection in collections:
-        if collection == "general_chunks":
-            logger.info(f"[Retrieve] Skipping collection: {collection}")
+        try:
+            results = await loop.run_in_executor(None, search_qdrant, collection, embedding, 30)
+            logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
+            for r in results:
+                if hasattr(r, 'payload') and r.payload:
+                    content = r.payload.get("content") or r.payload.get("text", "")
+                    all_docs.append(Document(page_content=content, metadata=r.payload))
+                elif isinstance(r, dict):
+                    content = r.get("content") or r.get("text", "")
+                    all_docs.append(Document(page_content=content, metadata=r))
+        except Exception as e:
+            logger.warning(f"[Retrieve] Skipping collection: {collection}")
             continue
-        logger.info(f"[Retrieve] Searching Qdrant collection: {collection}")
-        results, filter_condition = await loop.run_in_executor(None, search_qdrant, collection, embedding, query, 30)
-        logger.info(f"[Retrieve] Qdrant search for {collection} returned {len(results) if isinstance(results, list) else 1} results. Filter: {filter_condition}")
-        results_list = results if isinstance(results, list) else [results]
-        docs = []
-        for r in results_list:
-            if hasattr(r, 'payload') and r.payload:
-                meta = r.payload
-            elif isinstance(r, dict):
-                meta = r
-            else:
-                meta = {}
-            # Lấy content phù hợp
-            if collection == "term_chunks":
-                content = meta.get("definition", "")
-            else:
-                content = meta.get("content") or meta.get("text", "")
-            docs.append(Document(page_content=content, metadata=meta))
-        logger.info(f"[Retrieve] Parsed {len(docs)} docs from collection {collection}")
-        all_docs.extend(docs)
     logger.info(f"[Retrieve] Total docs before rerank: {len(all_docs)}")
     if all_docs:
         reranker = get_reranker()

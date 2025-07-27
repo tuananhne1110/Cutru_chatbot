@@ -19,6 +19,12 @@ class LangChainRAGComponents:
     def create_retrieval_chain(self, intent: str):
         return {"type": "retrieval_chain", "intent": intent, "description": f"LangChain retrieval chain for {intent}"}
 
+def should_continue_after_guardrails(state: ChatState) -> str:
+    """Kiểm tra xem có nên tiếp tục sau guardrails hay không."""
+    if state.get("error") == "input_validation_failed":
+        return "update_memory"  # Chuyển thẳng đến update_memory nếu bị chặn
+    return "rewrite"  # Tiếp tục bình thường
+
 def create_rag_workflow():
     workflow = StateGraph(ChatState)
     workflow.add_node("set_intent", set_intent)
@@ -29,6 +35,8 @@ def create_rag_workflow():
     workflow.add_node("generate", generate_answer)
     workflow.add_node("validate", validate_output)
     workflow.add_node("update_memory", update_memory)
+    
+    # Edges
     workflow.add_edge(START, "set_intent")
     workflow.add_edge("set_intent", "semantic_cache")
     workflow.add_edge("semantic_cache", "guardrails_input")
@@ -38,6 +46,7 @@ def create_rag_workflow():
     workflow.add_edge("generate", "validate")
     workflow.add_edge("validate", "update_memory")
     workflow.add_edge("update_memory", END)
+    
     app = workflow.compile(checkpointer=MemorySaver())
     return app
 
