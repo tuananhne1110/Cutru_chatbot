@@ -19,20 +19,22 @@ class ContextManager:
     - Tóm tắt lịch sử khi quá dài
     - Ưu tiên những lượt đối thoại có liên quan
     - Tối ưu prompt cho LLM
+    - Không hardcode patterns, sử dụng LLM để tự động xử lý follow-up questions
     """
     
-    def __init__(self, max_turns: int = 20, max_tokens: int = 4000):
+    def __init__(self, max_turns: int = 20, max_tokens: int = 4000, history_window: int = 5):
         self.max_turns = max_turns
         self.max_tokens = max_tokens
+        self.history_window = history_window  # Số lượt gần nhất để truyền vào LLM
         
     def process_conversation_history(self, 
-                                   messages: List[Dict], 
+                                   messages: List, 
                                    current_question: str) -> Tuple[str, List[ConversationTurn]]:
         """
         Xử lý lịch sử hội thoại và tạo context tối ưu
         
         Args:
-            messages: Danh sách messages từ request
+            messages: Danh sách messages từ request (có thể là dict hoặc message objects)
             current_question: Câu hỏi hiện tại
             
         Returns:
@@ -44,12 +46,34 @@ class ContextManager:
         # Chuyển đổi messages thành ConversationTurn
         turns = []
         for msg in messages:
-            if msg.get('role') in ['user', 'assistant']:
-                turns.append(ConversationTurn(
-                    role=msg['role'],
-                    content=msg['content'],
-                    timestamp=msg.get('timestamp')
+            # Handle cả dict và message objects
+            if isinstance(msg, dict):
+                if msg.get('role') in ['user', 'assistant']:
+                    turns.append(ConversationTurn(
+                        role=msg['role'],
+                        content=msg['content'],
+                        timestamp=msg.get('timestamp')
                 ))
+            else:
+                # Handle message objects (HumanMessage, AIMessage, etc.)
+                try:
+                    if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                        role = 'user' if getattr(msg, 'type', None) == 'human' else 'assistant'
+                        turns.append(ConversationTurn(
+                            role=role,
+                            content=msg.content,
+                            timestamp=getattr(msg, 'timestamp', None)
+                        ))
+                    elif hasattr(msg, 'role') and hasattr(msg, 'content'):
+                        # Direct role/content attributes
+                        turns.append(ConversationTurn(
+                            role=msg.role,
+                            content=msg.content,
+                            timestamp=getattr(msg, 'timestamp', None)
+                        ))
+                except Exception as e:
+                    logger.warning(f"Could not process message: {msg}, error: {e}")
+                    continue
         
         # Tính relevance score cho từng turn
         self._calculate_relevance_scores(turns, current_question)
@@ -57,13 +81,14 @@ class ContextManager:
         # Lọc và sắp xếp turns theo relevance
         relevant_turns = self._filter_relevant_turns(turns)
         
-        # Tạo context string
+        # Tạo context string - đơn giản, không hardcode
         context_string = self._create_context_string(relevant_turns, current_question)
         
         # Log để debug
         logger.info(f"Context processing: {len(messages)} original messages -> {len(relevant_turns)} relevant turns")
         logger.info(f"Context length: {len(context_string)} characters")
         logger.info(f"Max turns configured: {self.max_turns}")
+        logger.info(f"History window: {self.history_window}")
         
         # Log chi tiết về relevance scores
         if relevant_turns:
@@ -72,6 +97,55 @@ class ContextManager:
                 logger.info(f"  Turn {i+1} ({turn.role}): {turn.relevance_score:.3f} - {turn.content[:100]}...")
         
         return context_string, relevant_turns
+    
+    def get_recent_history_for_llm(self, messages: List, current_question: str) -> str:
+        """
+        Lấy lịch sử gần nhất để truyền vào LLM cho query rewrite
+        """
+        if not messages:
+            return f"Câu hỏi mới: {current_question}"
+        
+        # Lấy history window gần nhất
+        recent_messages = messages[-self.history_window:]
+        
+        # Tạo format đơn giản cho LLM
+        history_parts = []
+        for msg in recent_messages:
+            # Handle cả dict và message objects
+            if isinstance(msg, dict):
+                if msg.get('role') in ['user', 'assistant']:
+                    role_name = "user" if msg['role'] == 'user' else "assistant"
+                    history_parts.append(f"[{role_name}: {msg['content']}]")
+            else:
+                # Handle message objects
+                try:
+                    if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                        role_name = "user" if getattr(msg, 'type', None) == 'human' else "assistant"
+                        history_parts.append(f"[{role_name}: {msg.content}]")
+                    elif hasattr(msg, 'role') and hasattr(msg, 'content'):
+                        role_name = "user" if msg.role == 'user' else "assistant"
+                        history_parts.append(f"[{role_name}: {msg.content}]")
+                except Exception as e:
+                    logger.warning(f"Could not process message for history: {msg}, error: {e}")
+                    continue
+        
+        history_string = " ".join(history_parts)
+        
+        return f"Lịch sử hội thoại: {history_string}\n\nCâu hỏi mới: {current_question}"
+    
+    def create_query_rewrite_prompt(self, history_context: str) -> str:
+        """
+        Tạo prompt cho LLM để rewrite câu hỏi
+        Không hardcode patterns, để LLM tự hiểu và xử lý
+        """
+        prompt = f"""
+Hãy dựa vào toàn bộ lịch sử hội thoại và câu hỏi mới của user, nếu câu hỏi mới không đủ rõ/ngắn/gãy ý, hãy tự động diễn giải lại thành một câu hỏi hoàn chỉnh, đầy đủ thông tin từ lịch sử. Nếu đã rõ thì giữ nguyên.
+
+{history_context}
+
+Hãy trả lời chỉ với câu hỏi đã được rewrite (hoặc giữ nguyên nếu đã rõ ràng), không thêm giải thích.
+"""
+        return prompt.strip()
     
     def _calculate_relevance_scores(self, turns: List[ConversationTurn], current_question: str):
         """Tính điểm relevance cho từng turn dựa trên câu hỏi hiện tại"""
@@ -89,12 +163,9 @@ class ContextManager:
     
     def _extract_keywords(self, text: str) -> set:
         """Trích xuất keywords từ text"""
-        # Loại bỏ stopwords và ký tự đặc biệt
-        stopwords = {'là', 'và', 'của', 'cho', 'với', 'có', 'không', 'như', 'được', 'trong', 'khi', 'đã', 'này', 'đó', 'thì', 'lại', 'nên', 'rồi', 'nữa', 'vẫn', 'đang', 'tôi', 'bạn', 'mình', 'em', 'anh', 'chị'}
-        
-        # Tách từ và lọc
+        # Tách từ và lọc - không loại bỏ stopwords
         words = re.findall(r'\b\w+\b', text)
-        keywords = {word for word in words if len(word) > 2 and word not in stopwords}
+        keywords = {word for word in words if len(word) > 2}
         
         return keywords
     
@@ -137,7 +208,7 @@ class ContextManager:
         return combined_turns[:self.max_turns]
     
     def _create_context_string(self, turns: List[ConversationTurn], current_question: str) -> str:
-        """Tạo context string từ các turns đã lọc"""
+        """Tạo context string từ các turns đã lọc - đơn giản, không hardcode"""
         if not turns:
             return ""
         

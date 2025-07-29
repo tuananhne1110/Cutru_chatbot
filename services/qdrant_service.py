@@ -104,7 +104,6 @@ Vui lòng tuân thủ các quy tắc sau:
 """
 
 
-
 FILTER_PROMPT_FROM = """
 Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm giấy tờ và biểu mẫu hành chính.
 
@@ -252,14 +251,7 @@ def automate_filtering(user_query, formatted_indexes, filter_prompt):
 
 
 def search_qdrant(collection_name, query_embedding, query, limit=5):
-    # if ["legal_chunks", "form_chunks", "term_chunks", "procedure_chunks"]
     print("###" + query + "###")
-    print("###" + query + "###")
-    print("###" + query + "###")
-    print("###" + query + "###")
-    print("###" + query + "###")
-
-
 
     if collection_name == "procedure_chunks":
         filter_prompt = FILTER_PROMPT_PROCEDURE
@@ -307,7 +299,11 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
                 limit=limit,
                 with_payload=True
             )
-            return vector_search_results, filter_condition
+            # vector_search_results có thể là object có .points attribute
+            if hasattr(vector_search_results, 'points'):
+                return vector_search_results.points, filter_condition
+            else:
+                return vector_search_results, filter_condition
         else:
             return filter_result, filter_condition
 
@@ -319,7 +315,11 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             limit=limit,
             with_payload=True
         )
-        return vector_search_results, filter_condition
+        # vector_search_results có thể là object có .points attribute
+        if hasattr(vector_search_results, 'points'):
+            return vector_search_results.points, filter_condition
+        else:
+            return vector_search_results, filter_condition
 
 
 def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):

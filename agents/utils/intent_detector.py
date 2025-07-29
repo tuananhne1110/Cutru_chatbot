@@ -60,7 +60,6 @@ Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
 ## Chú ý: 
     - Với mỗi truy vấn, bạn **cần liệt kê đầy đủ tất cả các cơ sở dữ liệu liên quan**, không bỏ sót (có thể từ 1 đến nhiều).
     - Nếu truy vấn thuộc về nhiều lĩnh vực cùng lúc, trả về nhiều cơ sở dữ liệu.
-
 """
 
 def load_intent_config(yaml_path="config/config.yaml"):
@@ -90,7 +89,6 @@ class ToolSpec:
                 "inputSchema": {"json": self.input_schema}
             }
         }
-
 
 TOOL_CONFIGS: List[ToolSpec] = [
     ToolSpec(
@@ -156,7 +154,7 @@ class TextUtils:
             result = [json.loads(item) for item in raw_list]
             return result
         except Exception as e:
-            print(f"❌ Lỗi khi decode text JSON: {e}")
+            print(f"Lỗi khi decode text JSON: {e}")
             return []
 
 

@@ -1,146 +1,116 @@
-import re
-from typing import Optional, Dict
 import logging
+from typing import List, Dict, Optional
+from agents.utils.context_manager import context_manager
 
 logger = logging.getLogger(__name__)
 
-# Các cụm từ mở đầu không giá trị
-UNNECESSARY_PHRASES = [
-    r"mình muốn hỏi",
-    r"tư vấn giúp",
-    r"cho mình hỏi",
-    r"xin hỏi",
-    r"bạn ơi",
-    r"ad ơi",
-    r"có ai biết",
-    r"ai biết cho hỏi",
-    r"mọi người cho hỏi",
-    r"em muốn hỏi",
-    r"tôi muốn hỏi",
-    r"làm ơn cho hỏi",
-    r"cần tư vấn",
-    r"giúp em với",
-    r"giúp mình với",
-    r"giúp với",
-]
-
-STOPWORDS = set([
-    "là", "và", "của", "cho", "với", "có", "không", "như", "được", "trong", "khi", "đã", "này", "đó", "thì", "lại", "nên", "rồi", "nữa", "vẫn", "đang"
-])
-
-EMOJI_PATTERN = re.compile("[\U00010000-\U0010ffff]+", flags=re.UNICODE)
-HTML_TAG_PATTERN = re.compile(r'<.*?>')
-STRANGE_CHAR_PATTERN = re.compile(r'[^\w\s.,:;!?()\-–—/\[\]{}@#%&*+=<>\u00C0-\u1EF9]')
-MULTI_SPACE_PATTERN = re.compile(r'\s+')
-
 class QueryRewriter:
+    """
+    Query Rewriter sử dụng LLM để tự động xử lý follow-up questions
+    """
+    
     def __init__(self):
-        pass
+        self.context_manager = context_manager
+        
+    async def rewrite_query_with_context(self, 
+                                       current_question: str, 
+                                       messages: List,
+                                       llm_client=None) -> str:
+        """
+        Rewrite câu hỏi sử dụng LLM dựa trên context
+        """
+        try:
+            # Lấy lịch sử gần nhất cho LLM
+            history_context = self.context_manager.get_recent_history_for_llm(
+                messages, current_question
+            )
+            
+            # Tạo prompt cho LLM
+            prompt = self.context_manager.create_query_rewrite_prompt(history_context)
+                        
+            # Nếu không có LLM client, trả về câu hỏi gốc
+            if not llm_client:
+                logger.warning("No LLM client provided, returning original question")
+                return current_question
+            
+            # Gọi LLM để rewrite
+            rewritten_query = await self._call_llm_for_rewrite(prompt, llm_client)
 
-    # --- Tầng 1: Làm sạch truy vấn ---
-    def rule_based_clean(self, text: str) -> str:
-        # 1. Bỏ emoji
-        text = EMOJI_PATTERN.sub('', text)
-        # 2. Bỏ html tag
-        text = HTML_TAG_PATTERN.sub('', text)
-        # 3. Bỏ ký tự lạ
-        text = STRANGE_CHAR_PATTERN.sub(' ', text)
-        # 4. Bỏ xuống dòng
-        text = text.replace('\n', ' ').replace('\r', ' ')
-        # 5. Loại cụm từ mở đầu
-        for phrase in UNNECESSARY_PHRASES:
-            if re.search(phrase, text, re.IGNORECASE):
-                text = re.sub(phrase, '', text, flags=re.IGNORECASE)
-        # 6. Chuẩn hóa khoảng trắng
-        text = MULTI_SPACE_PATTERN.sub(' ', text).strip()
-        return text
+            return rewritten_query
+            
+        except Exception as e:
+            logger.error(f"Error in query rewrite: {e}")
+            # Fallback: trả về câu hỏi gốc
+            return current_question
+    
+    async def _call_llm_for_rewrite(self, prompt: str, llm_client) -> str:
+        """
+        Gọi LLM để rewrite câu hỏi
+        """
+        try:
+            # Gọi LLM với prompt
+            response = await llm_client.agenerate([prompt])
+            
+            if response and response.generations:
+                rewritten_query = response.generations[0][0].text.strip()
+                
+                # Clean up response - chỉ lấy câu hỏi, không lấy giải thích
+                rewritten_query = self._clean_llm_response(rewritten_query)
+                
+                return rewritten_query
+            else:
+                logger.warning("Empty response from LLM")
+                return ""
+                
+        except Exception as e:
+            logger.error(f"Error calling LLM for rewrite: {e}")
+            return ""
 
-    # --- Tầng 2: Phân tích thông minh ---
-    def detect_intent(self, text: str) -> str:
+    def _clean_llm_response(self, response: str) -> str:
         """
-        Phát hiện intent dựa trên rule đơn giản (có thể thay bằng model)
+        Clean up response từ LLM
+        Loại bỏ các phần không cần thiết, chỉ giữ lại câu hỏi
         """
-        text_lower = text.lower()
-        if any(x in text_lower for x in ["lệ phí", "phí", "mức phí", "bao nhiêu tiền", "giá"]):
-            return "fee"
-        if any(x in text_lower for x in ["giấy tờ", "hồ sơ", "cần những gì", "cần giấy gì", "thủ tục"]):
-            return "document"
-        if any(x in text_lower for x in ["bao lâu", "thời gian", "mất bao lâu", "trong bao lâu"]):
-            return "time"
-        if any(x in text_lower for x in ["đối tượng", "ai", "dành cho ai"]):
-            return "subject"
-        if any(x in text_lower for x in ["biểu mẫu", "mẫu", "form", "ct01", "ct02"]):
-            return "form"
-        return "general"
+        # Loại bỏ các prefix/suffix không cần thiết
+        response = response.strip()
+        
+        # Loại bỏ dấu ngoặc kép nếu có
+        if response.startswith('"') and response.endswith('"'):
+            response = response[1:-1]
+        
+        # Loại bỏ các từ khóa không cần thiết
+        unwanted_prefixes = [
+            "Câu hỏi đã được rewrite:",
+            "Câu hỏi mới:",
+            "Câu hỏi:",
+            "Rewrite:",
+            "Đã rewrite:"
+        ]
+        
+        for prefix in unwanted_prefixes:
+            if response.startswith(prefix):
+                response = response[len(prefix):].strip()
+                break
+        
+        return response
+    
+    def create_rewrite_prompt_template(self) -> str:
+        """
+        Template prompt cho query rewrite
+        """
+        return """
+Hãy dựa vào toàn bộ lịch sử hội thoại và câu hỏi mới của user, nếu câu hỏi mới không đủ rõ/ngắn/gãy ý, hãy tự động diễn giải lại thành một câu hỏi hoàn chỉnh, đầy đủ thông tin từ lịch sử. Nếu đã rõ thì giữ nguyên.
 
-    def extract_meta(self, text: str) -> Dict[str, str]:
-        """
-        Trích xuất procedure, subject, form từ câu hỏi (rule-based, có thể thay bằng NER/model)
-        """
-        meta = {}
-        # Procedure: tìm các cụm từ như "đăng ký tạm trú", "cấp lại thẻ", ...
-        m = re.search(r'(đăng ký [\w ]+|cấp lại [\w ]+|gia hạn [\w ]+|xin [\w ]+|thủ tục [\w ]+)', text.lower())
-        if m:
-            meta['procedure'] = m.group(0)
-        # Subject: người nước ngoài, công dân, trẻ em, ...
-        m = re.search(r'(người nước ngoài|công dân|trẻ em|học sinh|sinh viên|người cao tuổi)', text.lower())
-        if m:
-            meta['subject'] = m.group(0)
-        # Form: CT01, CT02, ...
-        m = re.search(r'(ct0\d+|ct\d+|mẫu [a-z0-9]+)', text.lower())
-        if m:
-            meta['form'] = m.group(0)
-        return meta
+Lưu ý:
+- Nếu câu hỏi ngắn, thiếu context, hãy bổ sung thông tin từ lịch sử
+- Nếu câu hỏi dùng từ "cái nào", "nữa", "còn", "thì sao", hãy hiểu ngầm và diễn giải rõ ràng
+- Nếu câu hỏi đã rõ ràng, đầy đủ, thì giữ nguyên
+- Chỉ trả lời bằng câu hỏi đã rewrite, không thêm giải thích
 
-    # --- Tầng 3: Tái tạo câu hỏi ---
-    def rewrite_with_template(self, intent: str, meta: Dict[str, str]) -> str:
-        """
-        Sinh câu hỏi mới từ intent + meta (template động)
-        """
-        procedure = meta.get('procedure', '')
-        subject = meta.get('subject', '')
-        form = meta.get('form', '')
-        if intent == "fee" and procedure:
-            if subject:
-                return f"{subject.capitalize()} cần nộp lệ phí bao nhiêu khi thực hiện thủ tục {procedure}?"
-            return f"Lệ phí thực hiện thủ tục {procedure} là bao nhiêu?"
-        if intent == "document" and procedure:
-            if subject:
-                return f"{subject.capitalize()} cần chuẩn bị những giấy tờ gì để làm thủ tục {procedure}?"
-            return f"Cần chuẩn bị những giấy tờ gì để làm thủ tục {procedure}?"
-        if intent == "time" and procedure:
-            return f"Thời gian hoàn thành thủ tục {procedure} là bao lâu?"
-        if intent == "form" and form:
-            return f"Biểu mẫu {form.upper()} dùng trong thủ tục nào và điền như thế nào?"
-        # fallback
-        return ""
+{history_context}
 
-    def rewrite_with_llm(self, original: str, context: Optional[str], intent: str, meta: Dict[str, str]) -> str:
-        """
-        Dùng LLM để rewrite, giữ ý định gốc, bổ sung context nếu có
-        """
-        # Tạm thời trả về câu hỏi gốc đã clean thay vì prompt
-        return original
+Hãy trả lời chỉ với câu hỏi đã được rewrite (hoặc giữ nguyên nếu đã rõ ràng), không thêm giải thích.
+"""
 
-    def rewrite(self, text: str, context: Optional[str] = None) -> str:
-        """
-        Pipeline 3 tầng: clean -> intent/meta -> rewrite
-        """
-        clean = self.rule_based_clean(text)
-        intent = self.detect_intent(clean)
-        meta = self.extract_meta(clean)
-        logger.info(f"[QueryRewriter] Clean: {clean}")
-        logger.info(f"[QueryRewriter] Intent: {intent}")
-        logger.info(f"[QueryRewriter] Meta: {meta}")
-        rewritten = self.rewrite_with_template(intent, meta)
-        if rewritten:
-            logger.info(f"[QueryRewriter] Rewrite by template: {rewritten}")
-            return rewritten
-        # fallback dùng LLM
-        rewritten = self.rewrite_with_llm(clean, context, intent, meta)
-        logger.info(f"[QueryRewriter] Rewrite by LLM fallback: {rewritten}")
-        return rewritten
-
-    # Backward compatibility
-    def rewrite_with_context(self, text: str, conversation_context: Optional[str] = None) -> str:
-        return self.rewrite(text, conversation_context) 
+# Singleton instance
+query_rewriter = QueryRewriter() 

@@ -190,7 +190,6 @@ class BGEReranker:
         }
 
 # Global instance
-# Khởi tạo singleton ngay khi import
 bge_reranker = BGEReranker()
 def get_reranker() -> BGEReranker:
     return bge_reranker 

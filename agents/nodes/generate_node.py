@@ -37,9 +37,12 @@ async def generate_answer(state: ChatState) -> ChatState:
     docs = state["context_docs"]
     intent = state["intent"]
     history = state.get("messages", [])
+
+    if docs:
+        logger.info(f"[Generate] First doc: {docs[0] if docs else 'None'}")
     if not docs:
         logger.warning(f"[LangGraph] No docs found for question: {question}")
-        state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn."
+        state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn trong cơ sở dữ liệu pháp luật hiện có. Vui lòng thử câu hỏi khác hoặc liên hệ với cơ quan chức năng có thẩm quyền để được hỗ trợ."
         logger.info(f"[Langfuse] Logging input/model/metadata: input={question}, model={model_name}")
         langfuse_context.update_current_observation(
             input=question,
@@ -52,20 +55,32 @@ async def generate_answer(state: ChatState) -> ChatState:
                 "history": str(history[:5]),
             }
         )
-        logger.info(f"[Langfuse] Logging usage_details=0, cost_details=0 (no docs)")
+
         langfuse_context.update_current_observation(
             usage_details={"input": 0, "output": 0},
             cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
         )
+
         return state
     loop = asyncio.get_running_loop()
+    # Format docs để phù hợp với prompt_manager
+    formatted_docs = []
+    for doc in docs:
+        doc_dict = {
+            "content": doc.page_content,
+            "page_content": doc.page_content,
+            **doc.metadata
+        }
+        formatted_docs.append(doc_dict)
+    
     prompt = prompt_manager.create_dynamic_prompt(
         question,
-        [{"content": doc.page_content, "page_content": doc.page_content, **doc.metadata} for doc in docs]
+        formatted_docs
     )
     system_prompt = prompt_manager.prompt_templates.base_template
     state["prompt"] = prompt
     logger.info(f"[Langfuse] Logging input/model/metadata: input={prompt}, model={model_name}")
+    
     langfuse_context.update_current_observation(
         input=prompt,
         model=model_name,
@@ -87,9 +102,8 @@ async def generate_answer(state: ChatState) -> ChatState:
             answer_chunks.append(chunk)
             raw_llm_response.append(chunk)
         answer = "".join(answer_chunks)
-        logger.info(f"[LangGraph] Đã gọi xong call_llm_stream, answer[:100]: {str(answer)[:100]}")
         state["answer"] = answer
-        state["answer_chunks"] = answer_chunks
+        state["answer_chunks"] = answer_chunks 
         # Log usage details
         logger.info(f"[Langfuse] Logging usage_details={token_input}/{token_output}, cost_details=0")
         langfuse_context.update_current_observation(

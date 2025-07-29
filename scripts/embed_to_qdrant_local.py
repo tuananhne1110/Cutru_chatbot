@@ -98,7 +98,6 @@ def lower_metadata(chunk):
     return cleaned
 
 # 4. Hàm tạo collection với schema
-# (Chỉ tạo schema đơn giản, có thể mở rộng nếu cần)
 def create_collection(client, name, vector_size):
     try:
         client.get_collection(name)

@@ -77,7 +77,7 @@ def call_llm_stream(prompt, model="claude", max_tokens=4000, temperature=0.5):
         import logging
         logging.error(f"[LLM ERROR] {str(e)}")
 
-def call_llm_full(prompt, model="claude", max_tokens=4000, temperature=0.3):  # Tăng max_tokens và temperature
+def call_llm_full(prompt, model="claude", max_tokens=4000, temperature=0.3):  
     """
     Get full response from AWS Bedrock
     """

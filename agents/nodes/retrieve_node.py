@@ -44,18 +44,19 @@ async def retrieve_context(state: ChatState) -> ChatState:
         logger.error("[Retrieve] Intent is None. State: %s", state)
         raise ValueError("Intent must not be None in retrieve_context")
     all_collections = set()
-    for intent, confidence in all_intents:
-        if confidence > 0.1:  # Chỉ xét intent có confidence > 10%
-            if intent == IntentType.LAW:
-                all_collections.add("legal_chunks")
-            elif intent == IntentType.FORM:
-                all_collections.add("form_chunks")
-            elif intent == IntentType.TERM:
-                all_collections.add("term_chunks")
-            elif intent == IntentType.PROCEDURE:
-                all_collections.add("procedure_chunks")
-            elif intent == IntentType.GENERAL:
-                all_collections.add("general_chunks")
+
+    for intent, query in all_intents:
+        # Intent detector trả về (intent, query)
+        if intent == IntentType.LAW:
+            all_collections.add("legal_chunks")
+        elif intent == IntentType.FORM:
+            all_collections.add("form_chunks")
+        elif intent == IntentType.TERM:
+            all_collections.add("term_chunks")
+        elif intent == IntentType.PROCEDURE:
+            all_collections.add("procedure_chunks")
+        elif intent == IntentType.GENERAL:
+            all_collections.add("general_chunks")
     collections = list(all_collections)
     logger.info(f"[Retrieve] Collections to search (from all intents): {collections}")
     if not collections:
@@ -69,8 +70,19 @@ async def retrieve_context(state: ChatState) -> ChatState:
     all_docs = []
     for collection in collections:
         try:
-            results = await loop.run_in_executor(None, search_qdrant, collection, embedding, 30)
+            search_result = await loop.run_in_executor(None, search_qdrant, collection, embedding, query, 30)
+            # search_qdrant returns (results, filter_condition)
+            if isinstance(search_result, tuple):
+                results, filter_condition = search_result
+            else:
+                results = search_result
+                filter_condition = None
             logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
+            logger.info(f"[Retrieve] Results type: {type(results)}")
+            logger.info(f"[Retrieve] First result: {results[0] if results else 'None'}")
+            logger.info(f"[Retrieve] Results structure: {type(results[0]) if results else 'None'}")
+            if results and hasattr(results[0], '__dict__'):
+                logger.info(f"[Retrieve] First result attributes: {list(results[0].__dict__.keys())}")
             for r in results:
                 if hasattr(r, 'payload') and r.payload:
                     content = r.payload.get("content") or r.payload.get("text", "")
@@ -84,11 +96,9 @@ async def retrieve_context(state: ChatState) -> ChatState:
     logger.info(f"[Retrieve] Total docs before rerank: {len(all_docs)}")
     if all_docs:
         reranker = get_reranker()
-        logger.info(f"[Retrieve] Running reranker on {len(all_docs)} docs")
         reranked_docs = await loop.run_in_executor(None, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 30)
         for i, doc in enumerate(all_docs[:len(reranked_docs)]):
             doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
-        logger.info(f"[Retrieve] Rerank completed. Top rerank score: {reranked_docs[0].get('rerank_score', 0.0) if reranked_docs else 'N/A'}")
     if primary_intent == IntentType.LAW:
         logger.info("[Retrieve] LAW intent detected - starting parent_id grouping and expansion...")
         expanded_docs = await _expand_law_chunks_with_structure(all_docs, collections, loop)

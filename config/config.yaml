@@ -30,8 +30,9 @@ intent:
     Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
     1. **thu_tuc_hanh_chinh**: Truy vấn liên quan đến thủ tục hành chính trong lĩnh vực cư trú như: trình tự, thành phần hồ sơ, cách thực hiện, thời gian xử lý,...
     2. **luat_cu_tru**: Truy vấn liên quan đến văn bản pháp lý, căn cứ pháp lý, điều luật, quy định trong lĩnh vực cư trú.
-    3. **giay_to_cu_tru**: Truy vấn liên quan đến giấy tờ, biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
+    3. **giay_to_cu_tru**: Truy vấn liên quan đến cách điền giấy tờ, biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
     4. **thuat_ngu_cu_tru**: Truy vấn cần định nghĩa, giải thích các thuật ngữ, khái niệm chuyên ngành liên quan đến cư trú.
+    5. **template_cu_tru**: Truy vấn liên quan đến biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
     6. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
     ## Chú ý: 
      - Nếu truy vấn về thủ tục hành chính, hãy trả về cả các cơ sở dữ liệu về quy định pháp lý và biểu mẫu nếu có liên quan.
