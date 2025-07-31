@@ -77,10 +77,10 @@ async def retrieve_context(state: ChatState) -> ChatState:
             else:
                 results = search_result
                 filter_condition = None
-            logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
-            logger.info(f"[Retrieve] Results type: {type(results)}")
-            logger.info(f"[Retrieve] First result: {results[0] if results else 'None'}")
-            logger.info(f"[Retrieve] Results structure: {type(results[0]) if results else 'None'}")
+            # logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
+            # logger.info(f"[Retrieve] Results type: {type(results)}")
+            # logger.info(f"[Retrieve] First result: {results[0] if results else 'None'}")
+            # logger.info(f"[Retrieve] Results structure: {type(results[0]) if results else 'None'}")
             if results and hasattr(results[0], '__dict__'):
                 logger.info(f"[Retrieve] First result attributes: {list(results[0].__dict__.keys())}")
             for r in results:
