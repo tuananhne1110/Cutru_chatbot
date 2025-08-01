@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 from langfuse.decorators import observe, langfuse_context
 import boto3
 import yaml
+from agents.utils.intent_detector import IntentType
 
 logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
@@ -42,7 +43,50 @@ async def generate_answer(state: ChatState) -> ChatState:
         logger.info(f"[Generate] First doc: {docs[0] if docs else 'None'}")
     if not docs:
         logger.warning(f"[LangGraph] No docs found for question: {question}")
-        state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn trong cơ sở dữ liệu pháp luật hiện có. Vui lòng thử câu hỏi khác hoặc liên hệ với cơ quan chức năng có thẩm quyền để được hỗ trợ."
+        logger.info(f"[LangGraph] Intent detected: {intent}")
+        
+        # Xử lý câu hỏi chung chung
+        if intent == IntentType.GENERAL:
+            logger.info(f"[LangGraph] Processing GENERAL intent for question: {question}")
+            # Sử dụng LLM để trả lời câu hỏi chung chung
+            try:
+                from services.llm_service import call_llm_stream
+                
+                loop = asyncio.get_running_loop()
+                answer_chunks = []
+                for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(question, model_name))):
+                    answer_chunks.append(chunk)
+                answer = "".join(answer_chunks)
+                state["answer"] = answer
+                state["answer_chunks"] = answer_chunks
+                
+                logger.info(f"[Langfuse] Logging input/model/metadata: input={question}, model={model_name}")
+                langfuse_context.update_current_observation(
+                    input=question,
+                    model=model_name,
+                    metadata={
+                        "session_id": state["session_id"],
+                        "intent": str(intent),
+                        "prompt_version": prompt_version,
+                        "system_prompt": "",
+                        "history": str(history[:5]),
+                    }
+                )
+                
+                langfuse_context.update_current_observation(
+                    usage_details={"input": 0, "output": 0},
+                    cost_details={"input": 0.0, "output": 0.0, "total": 0.0}
+                )
+                
+                return state
+            except Exception as e:
+                logger.error(f"[LangGraph] Error generating general response: {e}")
+                # Fallback response cho câu hỏi chung chung
+                state["answer"] = "Xin chào! Tôi là trợ lý AI, rất vui được gặp bạn. Bạn có thể hỏi tôi về các vấn đề liên quan đến thủ tục hành chính, luật pháp, biểu mẫu hoặc các câu hỏi khác."
+        else:
+            # Giữ nguyên response cho các intent khác
+            state["answer"] = "Xin lỗi, không tìm thấy thông tin liên quan đến câu hỏi của bạn trong cơ sở dữ liệu pháp luật hiện có. Vui lòng thử câu hỏi khác hoặc liên hệ với cơ quan chức năng có thẩm quyền để được hỗ trợ."
+        
         logger.info(f"[Langfuse] Logging input/model/metadata: input={question}, model={model_name}")
         langfuse_context.update_current_observation(
             input=question,
