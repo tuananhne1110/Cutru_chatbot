@@ -14,7 +14,7 @@ bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
 
 def load_llm_config(yaml_path="config/config.yaml"):
     try:
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path, 'r', encoding ="utf-8") as f:
             config = yaml.safe_load(f)
             return config.get("llm", {})
     except Exception:

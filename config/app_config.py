@@ -12,23 +12,7 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-def load_embedding_config(yaml_path="config/config.yaml"):
-    try:
-        with open(yaml_path, 'r') as f:
-            config = yaml.safe_load(f)
-            return config.get("embedding", {})
-    except Exception:
-        return {}
-embedding_cfg = load_embedding_config()
-embedding_model_name = embedding_cfg.get("model_name", "Alibaba-NLP/gte-multilingual-base")
-embedding_model = SentenceTransformer(embedding_model_name, trust_remote_code=True)
 
-qdrant_client = QdrantClient(
-    # url=os.getenv("QDRANT_URL"),
-    # api_key=os.getenv("QDRANT_API_KEY"),
-    host="localhost",
-    port=6333
-)
 
 # Initialization Supabase client
 supabase: Optional[Client] = None
@@ -41,3 +25,27 @@ if SUPABASE_URL and SUPABASE_KEY:
         supabase = None
 else:
     print("Supabase URL or KEY not found in environment variables") 
+
+
+
+# def load_embedding_config(yaml_path="config/config.yaml"):
+#     try:
+#         with open(yaml_path, 'r', encoding='utf-8') as f:
+#             config = yaml.safe_load(f)
+#             return config.get("embedding", {})
+#     except Exception:
+#         return {}
+    
+# embedding_cfg = load_embedding_config()
+# embedding_model_name = embedding_cfg.get("model_name", "Alibaba-NLP/gte-multilingual-base")
+# embedding_model = SentenceTransformer(embedding_model_name, trust_remote_code=True)
+
+
+
+
+qdrant_client = QdrantClient(
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    # host="localhost",
+    # port=6333
+)

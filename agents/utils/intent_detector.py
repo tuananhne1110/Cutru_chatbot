@@ -64,7 +64,7 @@ Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
 
 def load_intent_config(yaml_path="config/config.yaml"):
     try:
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path, 'r', encoding ="utf-8") as f:
             config = yaml.safe_load(f)
             return config.get("intent", {})
     except Exception:

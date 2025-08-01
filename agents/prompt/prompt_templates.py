@@ -22,7 +22,7 @@ class PromptTemplates:
 
     def _load_base_template(self, config_path: str) -> str:
         if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
                 pt = config.get("prompt_templates", {})
                 if pt and pt.get("base_template"):

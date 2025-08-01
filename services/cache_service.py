@@ -11,7 +11,7 @@ r = redis.Redis(host=redis_host, port=redis_port, db=0)
 
 def load_cache_config(yaml_path="config/config.yaml"):
     try:
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path, 'r', encoding ="utf-8") as f:
             config = yaml.safe_load(f)
             return config.get("cache", {})
     except Exception:

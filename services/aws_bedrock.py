@@ -496,7 +496,7 @@ def create_llama_config(**kwargs) -> LlamaConfig:
     return LlamaConfig(**kwargs)
 
 def load_config_from_yaml(yaml_path: str = "config/config.yaml", model_type: str = "claude") -> Union[ClaudeConfig, LlamaConfig]:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     if model_type.lower() == "claude":
         return ClaudeConfig(**config_dict.get("claude", {}))
@@ -506,26 +506,26 @@ def load_config_from_yaml(yaml_path: str = "config/config.yaml", model_type: str
         raise ValueError(f"Unknown model_type: {model_type}")
 
 def load_cache_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("cache", {})
 
 def load_llm_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("llm", {})
 
 def load_embedding_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("embedding", {})
 
 def load_intent_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("intent", {})
 
 def load_prompt_templates(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding ="utf-8") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("prompt_templates", {})
