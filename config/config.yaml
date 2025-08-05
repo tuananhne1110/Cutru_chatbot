@@ -67,8 +67,7 @@ prompt_templates:
       + CHỈ dựa vào field law_status trong metadata
       + Nếu có status_description, hãy trích dẫn đầy đủ chi tiết này
       + KHÔNG dựa vào nội dung text để suy đoán trạng thái
-    - Sắp xếp thông tin theo thứ tự logic và dễ hiểu
-    - Không trả lời thêm thông tin ngoài phạm vi câu hỏi, trả lời ngắn gọn nhưng đầy đủ ý. 
+      
 
     QUAN TRỌNG: Nếu THÔNG TIN THAM KHẢO không đủ để trả lời câu hỏi, hãy nói rõ "Không có đủ thông tin" thay vì tạo ra thông tin.
 
