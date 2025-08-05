@@ -22,7 +22,7 @@ class PromptTemplates:
 
     def _load_base_template(self, config_path: str) -> str:
         if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
                 pt = config.get("prompt_templates", {})
                 if pt and pt.get("base_template"):
@@ -80,13 +80,20 @@ class PromptTemplates:
         for chunk in chunks:
             if chunk['category'] == "law":
                 # Ưu tiên lấy page_content (merged text) nếu có
-                content = chunk.get('page_content') or chunk.get('content', '')
+                content = chunk.get('page_content') or chunk.get('content', '') or chunk.get('text', '')
                 law_name = chunk.get("law_name", "Luật")
+                law_code = chunk.get("law_code", "")
                 article = chunk.get("article", "")
                 chapter = chunk.get("chapter", "")
                 clause = chunk.get("clause", "")
                 point = chunk.get("point", "")
+                law_status = chunk.get("law_status", "")
+                status_description = chunk.get("status_description", "")
+                
+                # Format source_info với metadata nổi bật hơn
                 source_info = f"[{law_name}"
+                if law_code:
+                    source_info += f" ({law_code})"
                 if chapter:
                     source_info += f" - Chương {chapter}"
                 if article:
@@ -95,8 +102,16 @@ class PromptTemplates:
                     source_info += f" - Khoản {clause}"
                 if point:
                     source_info += f" - Điểm {point}"
+                
+                # Thêm metadata trạng thái nổi bật hơn
+                if law_status:
+                    source_info += f" - TRẠNG THÁI: {law_status}"
+                if status_description:
+                    source_info += f"\n - CHI TIẾT: {status_description}"
+                
                 source_info += "]"
                 context_parts.append(f"{source_info}\n{content}")
+
             elif chunk['category'] == "form":
                 logger.info(f"check cateogty ======== : {CategoryType.FORM}")
 
@@ -116,6 +131,7 @@ class PromptTemplates:
                 source_info += "]"
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
+
             elif chunk['category'] == "term":
                 logger.info(f"check cateogty ======== : {CategoryType.TERM}")
 
@@ -132,6 +148,7 @@ class PromptTemplates:
                 source_info += "]"
                 
                 context_parts.append(f"{source_info}\n{chunk.get('content', '')}")
+
             elif chunk['category'] == "procedure":
                 logger.info(f"check cateogty ======== : {CategoryType.PROCEDURE}")
 
@@ -166,6 +183,7 @@ class PromptTemplates:
                     content = '\n'.join(formatted_lines)
                 
                 context_parts.append(f"{source_info}\n{content}")
+
             elif chunk['category'] == "templates":
                 code = chunk.get("code", "")
                 name = chunk.get("name", "")
@@ -175,8 +193,10 @@ class PromptTemplates:
                 context_parts.append(
                     f"[{code}] {name}\nMô tả: {description}\nThủ tục liên quan: {procedures}\nFile: {file_url}"
                 )
+
             else:
                 context_parts.append("================ Không cần tham khảo ở dòng này ================")
+                
         return "\n\n".join(context_parts)
 
 # Singleton instance

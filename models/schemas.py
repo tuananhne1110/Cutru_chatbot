@@ -21,6 +21,8 @@ class Source(BaseModel):
     promulgator: Optional[str] = None
     promulgation_date: Optional[str] = None
     effective_date: Optional[str] = None
+    law_status: Optional[str] = None
+    status_description: Optional[str] = None 
     article: Optional[str] = None
     chapter: Optional[str] = None
     clause: Optional[str] = None

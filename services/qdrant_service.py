@@ -5,6 +5,7 @@ from instructor import from_bedrock, Mode
 from pydantic import BaseModel
 from qdrant_client.models import Filter, Condition
 import boto3
+import re
 
 
 # | Field                                           | Index     |
@@ -76,7 +77,7 @@ Vui lòng tuân thủ các quy tắc sau:
 Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 """
 
-FILTER_PROMPT_LEGAL= """
+FILTER_PROMPT_LEGAL = """
 Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm văn bản pháp luật về cư trú.
 
 Vui lòng tuân thủ các quy tắc sau:
@@ -91,7 +92,9 @@ Vui lòng tuân thủ các quy tắc sau:
 9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
     - **law_name** (`TEXT`): Tên đầy đủ của văn bản pháp luật. VD: "luật xuất nhập cảnh", "thông tư số 04/2016/TT-BNG".
-    - **law_code** (`KEYWORD`): Mã số văn bản. VD: "04/2016/TT-BNG".
+    - **law_code** (`KEYWORD`): Mã số văn bản. VD: "04/2016/TT-BNG". 
+       + Lưu ý: Tất cả giá trị trong database đều là lowercase, nên khi filter cần chuyển về lowercase
+       + VD: "104/2022/NĐ-CP" → filter với "104/2022/nđ-cp"
     - **promulgation_date** (`KEYWORD`): Ngày ban hành. VD: "30 tháng 6 năm 2016".
     - **effective_date** (`KEYWORD`): Ngày có hiệu lực. VD: "01 tháng 8 năm 2016".
     - **promulgator** (`TEXT`): Cơ quan ban hành. VD: "Bộ Ngoại giao", "Chính phủ".
@@ -100,7 +103,19 @@ Vui lòng tuân thủ các quy tắc sau:
     - **article** (`KEYWORD`): Điều cụ thể. VD: "điều 1", "điều 10".
     - **clause** (`KEYWORD`): Khoản trong điều. VD: "khoản 1", "khoản 2".
     - **point** (`KEYWORD`): Điểm trong khoản. VD: "điểm a", "điểm b".
+    - **law_status** (`KEYWORD`): Status tổng quát của luật. VD: "còn hiệu lực", "hết hiệu lực một phần", "hết hiệu lực".
+       + Khi user hỏi "status của luật", "luật nào còn hiệu lực", "trạng thái hiệu lực" → dùng field này
+    - **status_description** (`TEXT`): Mô tả chi tiết các phần hết hiệu lực. VD: "Các phần hết hiệu lực: Bãi bỏ Điều 12, Hết hiệu lực Điều 7".
     - **category** (`KEYWORD`): Danh mục phân loại. Mặc định là "law".
+
+QUAN TRỌNG - PHÂN BIỆT Ý ĐỊNH:
+- **Khi user hỏi "X còn hiệu lực không"** → Chỉ filter theo law_code, KHÔNG filter theo law_status
+  + VD: "nghị định 104/2022/NĐ-CP còn hiệu lực không" → chỉ filter law_code = "104/2022/nđ-cp"
+  + Mục đích: Kiểm tra status thực tế của luật đó
+- **Khi user hỏi "luật nào còn hiệu lực"** → Chỉ filter theo law_status = "Còn hiệu lực"
+  + Mục đích: Tìm tất cả luật có status cụ thể
+- **Khi user hỏi "cho tôi biết status của các luật"** → KHÔNG filter, để trả về tất cả
+  + Mục đích: Liệt kê status của tất cả luật
 """
 
 
@@ -210,6 +225,8 @@ FORMATTED_INDEXES_LEGAL = '''\
 - article - KEYWORD
 - parent_id - KEYWORD
 - effective_date - KEYWORD
+- law_status - KEYWORD
+- status_description - TEXT
 - id - KEYWORD
 - law_code - KEYWORD
 - parent_type - KEYWORD'''
@@ -248,7 +265,18 @@ def automate_filtering(user_query, formatted_indexes, filter_prompt):
 
     return response.to_qdrant_filter()
 
+def is_status_question(query: str) -> bool:
+    """Kiểm tra có phải câu hỏi về status không"""
+    status_keywords = ['status', 'trạng thái', 'hiệu lực', 'còn hiệu lực', 'hết hiệu lực']
+    law_patterns = [r'\d{2,4}/\d{4}', r'luật\s+\w+', r'nghị định\s+\d+', r'thông tư\s+\d+']
+    query_lower = query.lower()
+    
+    # Kiểm tra nếu là câu hỏi về status
+    has_status = any(keyword in query_lower for keyword in status_keywords)
+    # Kiểm tra nếu có mã luật cụ thể
+    has_law_code = any(re.search(pattern, query_lower) for pattern in law_patterns)
 
+    return has_status and not has_law_code
 
 def search_qdrant(collection_name, query_embedding, query, limit=5):
     print("###" + query + "###")
@@ -277,6 +305,15 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
 
     filter_condition = automate_filtering(user_query = query, formatted_indexes= formatted_indexes, filter_prompt= filter_prompt)
     
+    # Normalize case for law_code filters
+    if filter_condition and filter_condition.must:
+        for condition in filter_condition.must:
+            if hasattr(condition, 'key') and condition.key == 'law_code' and hasattr(condition, 'match'):
+                if hasattr(condition.match, 'value') and condition.match.value:
+                    condition.match.value = condition.match.value.lower()
+                elif hasattr(condition.match, 'text') and condition.match.text:
+                    condition.match.text = condition.match.text.lower()
+
     print("*###" + "_"*50 + "###*")
     print(filter_condition )
     print("###" + "_"*50 + "###")
@@ -292,6 +329,15 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             with_vectors=False  # Không trả về vector
         ).points
 
+        # QUAN TRỌNG: Với câu hỏi về status/law_code, KHÔNG fallback sang vector search
+        if is_status_question(query):
+            if filter_result:
+                return filter_result, filter_condition
+            else:
+                # Nếu không tìm thấy kết quả, trả về list rỗng thay vì fallback
+                print(f"⚠️ Status question but no filter results: {query}")
+                return [], filter_condition
+        
         if filter_condition is not None and len(filter_result) == 0:
             vector_search_results = qdrant_client.search(
                 collection_name=collection_name,

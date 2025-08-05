@@ -1,3 +1,4 @@
+import sys
 import os
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
@@ -11,6 +12,11 @@ load_dotenv()
 # Load env
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Thêm thư mục gốc vào Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
 def load_embedding_config(yaml_path="config/config.yaml"):
     try:

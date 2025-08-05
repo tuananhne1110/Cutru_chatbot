@@ -1,15 +1,23 @@
 import json
+import sys
+import os
+
+# Fix import path - Thêm thư mục gốc vào Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
+
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from config.app_config import embedding_model
 from config.app_config import qdrant_client as client
 
-# 1. Đường dẫn các file chunk
+# 1. Đường dẫn các file chunk (từ thư mục gốc)
 json_files = [
-    'chunking/output_json/form_chunks.json',
-    'chunking/output_json/all_laws.json',
-    'chunking/output_json/term_chunks.json',
-    'chunking/output_json/procedure_chunks.json',
-    'chunking/output_json/template_chunks.json'
+    'data/chunking/output_json/form_chunks.json',
+    'data/chunking/output_json/all_laws_updated.json',
+    'data/chunking/output_json/term_chunks.json',
+    'data/chunking/output_json/procedure_chunks.json',
+    'data/chunking/output_json/template_chunks.json'
 ]
 
 form_chunks = []
@@ -17,6 +25,9 @@ law_chunks = []
 term_chunks = []
 procedure_chunks = []
 template_chunks = []
+
+# Chuyển về thư mục gốc để đọc file
+os.chdir(project_root)
 
 for json_file in json_files:
     try:
@@ -49,6 +60,12 @@ print(f"Template chunks: {len(template_chunks)}")
 # 3. Hàm chuẩn hóa text và metadata về lowercase
 def prepare_text_for_embedding(chunk):
     parts = []
+    
+    # Thêm thông tin law_status và status_description vào embedding
+    if chunk.get('law_status'):
+        parts.append(f"Law Status: {chunk.get('law_status')}")
+    if chunk.get('status_description'):
+        parts.append(f"Status Description: {chunk.get('status_description')}")
     if 'form_name' in chunk:
         parts.append(f"Form: {chunk.get('form_name', '')}")
     if 'procedure_name' in chunk:
@@ -90,11 +107,10 @@ def prepare_text_for_embedding(chunk):
 def lower_metadata(chunk):
     cleaned = {}
     for k, v in chunk.items():
-        if k != 'content':
-            if v is None:
-                cleaned[k] = ""
-            else:
-                cleaned[k] = str(v).lower()
+        if v is None:
+            cleaned[k] = ""
+        else:
+            cleaned[k] = str(v).lower()
     return cleaned
 
 # 4. Hàm tạo collection với schema
@@ -130,7 +146,7 @@ def insert_chunks(client, collection_name, chunks, model):
             id=start_id + i,
             vector=embedding.tolist(),
             payload={
-                "text": text,
+                "content": text,
                 **metadata
             }
         )
@@ -149,4 +165,4 @@ insert_chunks(client, "term_chunks", term_chunks, embedding_model)
 insert_chunks(client, "procedure_chunks", procedure_chunks, embedding_model)
 insert_chunks(client, "template_chunks", template_chunks, embedding_model)
 
-print("✅ Đã embedding và import lên Qdrant localhost thành công!") 
+print("✅ Hoàn thành embedding tất cả chunks!") 

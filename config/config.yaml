@@ -62,7 +62,15 @@ prompt_templates:
     - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO để trả lời. Không suy đoán ngoài phạm vi
     - Khi trả lời về thủ tục, giấy tờ, hồ sơ: liệt kê đầy đủ từng loại giấy tờ, số lượng, yêu cầu cụ thể
     - Khi trả lời về luật pháp: TRÍCH DẪN ĐẦY ĐỦ nội dung các điều, khoản, điểm liên quan (không chỉ nhắc tên điều luật)
+    - Khi trả lời về trạng thái hiệu lực: CHỈ dựa vào field law_status trong metadata, KHÔNG dựa vào nội dung text
+    - Khi trả lời về trạng thái hiệu lực:
+      + CHỈ dựa vào field law_status trong metadata
+      + Nếu có status_description, hãy trích dẫn đầy đủ chi tiết này
+      + KHÔNG dựa vào nội dung text để suy đoán trạng thái
     - Sắp xếp thông tin theo thứ tự logic và dễ hiểu
+    - Không trả lời thêm thông tin ngoài phạm vi câu hỏi, trả lời ngắn gọn nhưng đầy đủ ý. 
+
+    QUAN TRỌNG: Nếu THÔNG TIN THAM KHẢO không đủ để trả lời câu hỏi, hãy nói rõ "Không có đủ thông tin" thay vì tạo ra thông tin.
 
     THÔNG TIN THAM KHẢO:
     {context}
