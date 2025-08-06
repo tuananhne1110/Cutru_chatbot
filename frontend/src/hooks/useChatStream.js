@@ -123,12 +123,13 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
               try {
                 const obj = JSON.parse(jsonStr); // PHẢI parse JSON!
                 if (obj.type === 'chunk' && obj.content) {
-                  result += obj.content;
+                  const newResult = result + obj.content;
+                  result = newResult;
                   setMessages(prev => {
                     const idx = prev.findIndex(msg => msg.id === botMessageId);
                     if (idx !== -1) {
                       const updated = [...prev];
-                      updated[idx] = { ...updated[idx], content: result };
+                      updated[idx] = { ...updated[idx], content: newResult };
                       return updated;
                     } else {
                       return prev;

@@ -19,6 +19,18 @@ cache:
   threshold: 0.85
   paraphrase_cache_prefix: "paraphrase_cache:"
   cache_key: "semantic_prompt_cache"
+langsmith:
+  project_name: "cutru-chatbot"
+  api_url: "https://api.smith.langchain.com"
+  tracing_enabled: true
+  tags:
+    - "development"
+    - "rag-workflow"
+    - "vietnamese-legal"
+  metadata:
+    application: "cutru-chatbot"
+    version: "2.0.0"
+    environment: "development"
 llm:
   prompt_version: "v1"
   default_model_name: "us.meta.llama4-scout-17b-instruct-v1:0"

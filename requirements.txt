@@ -10,6 +10,7 @@ python-dotenv==1.1.1
 # requests==2.32.4
 # typing-extensions==4.14.1
 python-docx==0.8.11
+beautifulsoup4==4.12.2
 # asyncio-mqtt==0.16.2
 
 # Pydantic & Data Validation
@@ -27,6 +28,7 @@ langchain-core==0.3.68
 # langchain-community==0.3.27
 # langchain-openai==0.3.27
 # langchain-anthropic==0.3.17
+langsmith==0.2.14
 
 # Embeddings & Transformers
 sentence-transformers==5.0.0
