@@ -87,7 +87,7 @@ function CT01Modal({ isOpen, onClose, onChatMessage }) {
   };
 
   const handleFormSubmit = (data) => {
-    console.log('🔍 Saving form data from step 2:', data);
+    console.log('Saving form data from step 2:', data);
     setFormData(data);
     handleStepChange(3);
   };

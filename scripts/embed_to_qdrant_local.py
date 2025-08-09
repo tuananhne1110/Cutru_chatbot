@@ -1,15 +1,22 @@
 import json
+import sys
+import os
+
+# Add the project root directory to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from config.app_config import embedding_model
 from config.app_config import qdrant_client as client
 
 # 1. Đường dẫn các file chunk
 json_files = [
-    'chunking/output_json/form_chunks.json',
-    'chunking/output_json/all_laws.json',
-    'chunking/output_json/term_chunks.json',
-    'chunking/output_json/procedure_chunks.json',
-    'chunking/output_json/template_chunks.json'
+    'data/chunking/output_json/form_chunks.json',
+    'data/chunking/output_json/all_laws.json',
+    'data/chunking/output_json/term_chunks.json',
+    'data/chunking/output_json/procedure_chunks.json',
+    'data/chunking/output_json/template_chunks.json'
 ]
 
 form_chunks = []

@@ -51,3 +51,9 @@ guardrails-ai==0.6.6
 # Torch
 torch==2.7.1
 pyyaml
+
+# Document generation
+weasyprint==63.1
+html2docx==1.6.0
+# For better DOCX conversion
+docxtpl==0.18.0

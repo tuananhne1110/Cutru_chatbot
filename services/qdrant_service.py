@@ -1,33 +1,24 @@
-import sys
 import os
-from config.app_config import qdrant_client
-from instructor import from_bedrock, Mode
-from pydantic import BaseModel
-from qdrant_client.models import Filter, Condition
+import sys
+
 import boto3
+from instructor import Mode, from_bedrock
+from pydantic import BaseModel
+from qdrant_client.models import Condition, Filter
 
-
-# | Field                                           | Index     |
-# | ----------------------------------------------- | --------- |
-# | `procedure_name`                                | `text`    |
-# | `source_section`                                | `text`    |
-# | `description`                                   | `text`    |
-# | `note`, `requirements`, `implementation_result` | `text`    |
-# | `procedure_code`                                | `keyword` |
-# | `category`, `field`, `implementation_level`     | `keyword` |
-# | `implementation_subject`                        | `keyword` |
+from config.app_config import qdrant_client
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _setup_llm_client():
-        bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
-        return from_bedrock(
-            client=bedrock_runtime,
-            model="us.meta.llama4-scout-17b-instruct-v1:0",
-            mode=Mode.BEDROCK_JSON,
-        )
+    bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
+    return from_bedrock(
+        client=bedrock_runtime,
+        model="us.meta.llama4-scout-17b-instruct-v1:0",
+        mode=Mode.BEDROCK_JSON,
+    )
 
 llm_client = _setup_llm_client()
 
@@ -76,7 +67,7 @@ Vui lòng tuân thủ các quy tắc sau:
 Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
 """
 
-FILTER_PROMPT_LEGAL= """
+FILTER_PROMPT_LEGAL = """
 Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm văn bản pháp luật về cư trú.
 
 Vui lòng tuân thủ các quy tắc sau:
@@ -173,7 +164,6 @@ Giải thích các trường quan trọng:
     - **procedures** (`TEXT`): Các thủ tục liên quan đến mẫu văn bản.
     - **category** (`KEYWORD`): Danh mục tài liệu. VD: `"templates"`.
 """
-# FORMATTED_INDEXES_
 FORMATTED_INDEXES_PROCEDURE = '''\
 - competent_authority - TEXT
 - decision_number - KEYWORD
@@ -268,17 +258,17 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
     elif collection_name == "template_chunks":
         filter_prompt = FILTER_PROMPT_TEMPLATE
         formatted_indexes = FORMATTED_INDEXES_TEMPLATE
-    else :
+    else:
         return qdrant_client.search(
             collection_name=collection_name,
             query_vector=query_embedding,
             limit=limit
         ) 
 
-    filter_condition = automate_filtering(user_query = query, formatted_indexes= formatted_indexes, filter_prompt= filter_prompt)
+    filter_condition = automate_filtering(user_query=query, formatted_indexes=formatted_indexes, filter_prompt=filter_prompt)
     
     print("*###" + "_"*50 + "###*")
-    print(filter_condition )
+    print(filter_condition)
     print("###" + "_"*50 + "###")
     
 
@@ -288,8 +278,8 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             query=query_embedding,
             query_filter=filter_condition,
             limit=limit,
-            with_payload=True,  # Trả về payload
-            with_vectors=False  # Không trả về vector
+            with_payload=True,
+            with_vectors=False
         ).points
 
         if filter_condition is not None and len(filter_result) == 0:
@@ -299,7 +289,6 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
                 limit=limit,
                 with_payload=True
             )
-            # vector_search_results có thể là object có .points attribute
             if hasattr(vector_search_results, 'points'):
                 return vector_search_results.points, filter_condition
             else:
@@ -308,14 +297,12 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             return filter_result, filter_condition
 
     except Exception as e:
-        # Nếu query_points bị lỗi, fallback sang search
         vector_search_results = qdrant_client.search(
             collection_name=collection_name,
             query_vector=query_embedding,
             limit=limit,
             with_payload=True
         )
-        # vector_search_results có thể là object có .points attribute
         if hasattr(vector_search_results, 'points'):
             return vector_search_results.points, filter_condition
         else:
@@ -323,7 +310,7 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
 
 
 def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):
-    """Truy vấn Qdrant lấy các chunk theo parent_id (không dùng embedding/query)"""
+    """Truy vấn Qdrant lấy các chunk theo parent_id."""
     filter_condition = {
         "must": [
             {"key": "parent_id", "match": {"value": parent_id}}
@@ -336,13 +323,10 @@ def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):
         with_payload=True,
         with_vectors=False
     )
-    # results đã là list các điểm
     return results
 
 def search_qdrant_by_id(collection_name, doc_id, limit=1):
-    """
-    Truy vấn Qdrant lấy các chunk theo id (thường dùng để lấy điều cha của khoản).
-    """
+    """Truy vấn Qdrant lấy các chunk theo id."""
     filter_condition = {
         "must": [
             {"key": "id", "match": {"value": doc_id}}
