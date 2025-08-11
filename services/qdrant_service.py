@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Optional
 
 import boto3
 from instructor import Mode, from_bedrock
@@ -26,12 +27,21 @@ class QdrantFilterWrapper(BaseModel):
     must: list[Condition] = []
     must_not: list[Condition] = []
     should: list[Condition] = []
+    min_should: Optional[int] = None
 
     def to_qdrant_filter(self) -> Filter:
+        from qdrant_client.models import MinShould
+        
+        # Chỉ tạo MinShould nếu có should conditions
+        min_should_obj = None
+        if self.min_should is not None and self.should:
+            min_should_obj = MinShould(conditions=self.should, min_count=self.min_should)
+        
         return Filter(
             must=self.must if self.must else None,
             must_not=self.must_not if self.must_not else None,
-            should=self.should if self.should else None
+            should=self.should if self.should else None,
+            min_should=min_should_obj
         )
 
 FILTER_PROMPT_PROCEDURE = """
@@ -68,31 +78,66 @@ Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu
 """
 
 FILTER_PROMPT_LEGAL = """
-Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm văn bản pháp luật về cư trú.
+Bạn là trợ lý AI chuyên trích xuất BỘ LỌC tìm kiếm (filter) cho cơ sở tri thức pháp luật về cư trú (Qdrant).
 
-Vui lòng tuân thủ các quy tắc sau:
-1. Truy vấn được đặt trong thẻ <query>...</query>.
-2. Danh sách các trường cho phép lọc sẽ được cung cấp trong thẻ <indexes>...</indexes>.
-3. Chỉ sử dụng các trường có trong <indexes>. Không tự tạo thêm trường mới.
-4. Chỉ sinh filter nếu bạn chắc chắn rằng ý định của người dùng tương ứng với tên trường và giá trị hợp lệ.
-5. Không nên suy đoán. Nếu không tìm được trường phù hợp, hãy trả về bộ lọc rỗng.
-6. Nếu người dùng đề cập đến điều gì đó cần loại trừ, hãy đưa vào mục `must_not`.
-7. Nếu truy vấn có chứa nhiều điều kiện, hãy kết hợp tất cả trong `must` (và `must_not` nếu có loại trừ).
-8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
-9. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
-10. Giải thích các trường có trong <indexes> để đảm bảo hiểu đúng ý định của người dùng.
-    - **law_name** (`TEXT`): Tên đầy đủ của văn bản pháp luật. VD: "luật xuất nhập cảnh", "thông tư số 04/2016/TT-BNG".
-    - **law_code** (`KEYWORD`): Mã số văn bản. VD: "04/2016/TT-BNG".
-    - **promulgation_date** (`KEYWORD`): Ngày ban hành. VD: "30 tháng 6 năm 2016".
-    - **effective_date** (`KEYWORD`): Ngày có hiệu lực. VD: "01 tháng 8 năm 2016".
-    - **promulgator** (`TEXT`): Cơ quan ban hành. VD: "Bộ Ngoại giao", "Chính phủ".
-    - **law_type** (`KEYWORD`): Loại văn bản. VD: "thông tư", "nghị định", "luật".
-    - **chapter** (`KEYWORD`): Chương của văn bản. VD: "chương i", "chương ii".
-    - **article** (`KEYWORD`): Điều cụ thể. VD: "điều 1", "điều 10".
-    - **clause** (`KEYWORD`): Khoản trong điều. VD: "khoản 1", "khoản 2".
-    - **point** (`KEYWORD`): Điểm trong khoản. VD: "điểm a", "điểm b".
-    - **category** (`KEYWORD`): Danh mục phân loại. Mặc định là "law".
+NHIỆM VỤ
+- Nhận truy vấn tiếng Việt trong <query>...</query>
+- Trả về JSON filter dùng cho Qdrant theo format quy định.
+- Không giải thích, KHÔNG thêm text ngoài JSON.
+
+TRƯỜNG ĐƯỢC PHÉP DÙNG (payload keys)
+- chapter_content (TEXT): Nội dung chương/mục liên quan
+- content (TEXT): Nội dung điều/khoản/điểm
+- law_name (TEXT): Tên văn bản (vd: "Luật Cư trú 2020", "Nghị định 62/2021/NĐ-CP")
+- law_type (KEYWORD): "Luật" | "Nghị định" | "Thông tư"
+- category (KEYWORD): Nhóm chủ đề (vd: "cư trú", "lưu trú", "tạm trú", "thường trú", "tạm vắng")
+
+QUY TẮC RA QUYẾT ĐỊNH
+1) MUST (ràng buộc bắt buộc) — đưa vào khi truy vấn có:
+   - TÊN hoặc LOẠI văn bản nêu rõ (vd: "Luật Cư trú", "Nghị định 62/2021").
+     -> map chính xác: { "key":"law_type","match":{"text":"Luật"}} và/hoặc { "key":"law_name","match":{"text":"Luật Cư trú"} }
+   - Tham chiếu cấu trúc: "Chương X", "Điều 20", "Khoản 2", "Điểm a"
+     -> match trong "content" hoặc "chapter_content" (vd: "Điều 20", "Khoản 2")
+   - Chủ đề hẹp, cụm từ khóa cốt lõi (vd: "thông báo lưu trú", "đăng ký tạm trú", "xóa đăng ký thường trú").
+     -> ít nhất 1 điều kiện MUST cho cụm cốt lõi.
+
+2) SHOULD (tăng độ liên quan, không bắt buộc)
+   - Từ đồng nghĩa/biến thể ngôn ngữ cho chủ đề:
+     * "thông báo lưu trú" ~ "khai báo lưu trú" ~ "báo lưu trú"
+     * "phương tiện/phương thức/hình thức/cách thức"
+     * "thời hạn/thời điểm/thời gian/trong vòng"
+     * "đăng ký tạm trú" ~ "tạm trú" ~ "đăng ký lưu trú"
+     * "thường trú" ~ "nhập hộ khẩu" (nếu phù hợp ngữ cảnh)
+   - Thực thể ngữ nghĩa phụ trợ nếu có (chủ thể, hồ sơ, thẩm quyền...).
+
+   Đặt "min_should" = 1 (hoặc 2 nếu có ≥2 nhóm từ đồng nghĩa rõ ràng). Không vượt quá chiều dài mảng "should".
+
+3) MUST_NOT (loại trừ)
+   - Chỉ dùng khi người hỏi nêu rõ loại trừ (vd: "không áp dụng cho người nước ngoài" -> nếu có nhãn trong dữ liệu).
+
+4) Không bịa tên văn bản, số hiệu. Nếu truy vấn không nêu, **không** thêm "law_name"/"law_type".
+5) Nếu không có từ khóa pháp lý rõ ràng → trả về JSON rỗng `{}`.
+6) Ưu tiên đặt cụm chính vào `chapter_content` hoặc `content`. Có thể lặp cụm vào cả hai dưới dạng SHOULD để tăng recall.
+7) Chỉ xuất JSON hợp lệ, các trường: "must" | "should" | "must_not" | "min_should". Bỏ hẳn trường rỗng.
+
+MẪU JSON HỢP LỆ
+{
+  "must": [ { "key":"content","match":{"text":"Điều 20"}} ],
+  "should": [ { "key":"content","match":{"text":"Khoản 2"}} ],
+  "min_should": 1
+}
+
+
+ĐẦU VÀO
+<indexes>
+chapter_content, content, law_name, law_type, category
+</indexes>
+<query>{{user_query}}</query>
+
+ĐẦU RA
+- Chỉ in ra JSON theo format đã nêu, không bao gồm giải thích.
 """
+
 
 
 FILTER_PROMPT_FROM = """
@@ -119,29 +164,7 @@ Giải thích các trường quan trọng:
 """
 
 
-FILTER_PROMPT_TERM = """
-Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc (filter) từ truy vấn tiếng Việt để phục vụ tìm kiếm thuật ngữ và định nghĩa pháp lý, hành chính.
-Vui lòng tuân thủ các quy tắc sau:
-1. Truy vấn được đặt trong thẻ <query>...</query>.
-2. Danh sách các trường cho phép lọc sẽ được cung cấp trong thẻ <indexes>...</indexes>.
-3. Chỉ sử dụng các trường có trong <indexes>. Không tự tạo thêm trường mới.
-4. Chỉ sinh filter nếu bạn chắc chắn rằng ý định của người dùng tương ứng với tên trường và giá trị hợp lệ.
-5. Không nên suy đoán. Nếu không tìm được trường phù hợp, hãy trả về bộ lọc rỗng.
-6. Nếu người dùng đề cập đến điều gì đó cần loại trừ, hãy đưa vào mục `must_not`.
-7. Nếu truy vấn có chứa nhiều điều kiện, hãy kết hợp tất cả trong `must` (và `must_not` nếu có loại trừ).
-8. Không cần sử dụng `should` và `min_should` trừ khi thực sự cần thiết.
-9. Tất cả giá trị được sinh ra phải là chữ thường (lowercase).
-10. Luôn ưu tiên độ chính xác hơn số lượng điều kiện lọc. Nếu không chắc chắn, hãy bỏ qua.
-Giải thích các trường quan trọng:
-    - **term** (`TEXT`): Thuật ngữ cần tra cứu. VD: `"nơi thường trú"`, `"nơi tạm trú"`, `"cư trú hợp pháp"`.
-    - **category** (`KEYWORD`): Danh mục thuật ngữ. VD: `"term"`, `"definition"`, `"legal_term"`.
 
-Lưu ý đặc biệt:
-- Khi người dùng tìm kiếm thuật ngữ, ưu tiên sử dụng trường `term` với từ khóa chính xác.
-- Khi người dùng tìm kiếm theo nội dung/định nghĩa, sử dụng trường `content` với tìm kiếm full-text.
-- Hỗ trợ tìm kiếm các thuật ngữ liên quan đến: cư trú, đăng ký, hành chính, pháp lý.
-- Có thể kết hợp tìm kiếm cả thuật ngữ và nội dung định nghĩa.
-"""
 
 FILTER_PROMPT_TEMPLATE = """
 Bạn là một trợ lý AI có nhiệm vụ trích xuất bộ lọc từ truy vấn tiếng Việt để phục vụ tìm kiếm mẫu văn bản và template.
@@ -186,23 +209,17 @@ FORMATTED_INDEXES_PROCEDURE = '''\
 
 
 FORMATTED_INDEXES_LEGAL = '''\
-- type - KEYWORD
-- point - KEYWORD
-- section - KEYWORD
 - law_name - TEXT
+- law_code - KEYWORD
 - law_type - KEYWORD
 - promulgator - TEXT
-- category - KEYWORD
 - promulgation_date - KEYWORD
-- clause - KEYWORD
-- chapter - KEYWORD
-- law_ref - KEYWORD
-- article - KEYWORD
-- parent_id - KEYWORD
 - effective_date - KEYWORD
-- id - KEYWORD
-- law_code - KEYWORD
-- parent_type - KEYWORD'''
+- chapter - KEYWORD
+- chapter_content - TEXT
+- content - TEXT
+- category - KEYWORD
+- id - KEYWORD'''
 
 FORMATTED_INDEXES_FORM = """
 - form_code - KEYWORD
@@ -213,10 +230,7 @@ FORMATTED_INDEXES_FORM = """
 - category - KEYWORD
 """
 
-FORMATTED_INDEXES_TERM = """
-- category - KEYWORD
-- term - TEXT
-"""
+
 FORMATTED_INDEXES_TEMPLATE = """
 - code - KEYWORD
 - name - KEYWORD
@@ -227,16 +241,19 @@ FORMATTED_INDEXES_TEMPLATE = """
 
 
 def automate_filtering(user_query, formatted_indexes, filter_prompt):
-    response = llm_client.messages.create(
-        response_model=QdrantFilterWrapper,
-        messages=[
-            {"role": "user", "content": filter_prompt.strip()},
-            {"role": "assistant", "content": "Đã hiểu. Tôi sẽ tuân thủ các quy tắc."},
-            {"role": "user", "content": f"<query>{user_query}</query>\n<indexes>\n{formatted_indexes}\n</indexes>"}
-        ]
-    )
-
-    return response.to_qdrant_filter()
+    try:
+        response = llm_client.messages.create(
+            response_model=QdrantFilterWrapper,
+            messages=[
+                {"role": "user", "content": filter_prompt.strip()},
+                {"role": "assistant", "content": "Đã hiểu. Tôi sẽ tuân thủ các quy tắc."},
+                {"role": "user", "content": f"<query>{user_query}</query>\n<indexes>\n{formatted_indexes}\n</indexes>"}
+            ]
+        )
+        return response.to_qdrant_filter()
+    except Exception as e:
+        print(f"Error in automate_filtering: {e}")
+        return None
 
 
 
@@ -252,9 +269,7 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
     elif collection_name == "form_chunks":
         filter_prompt = FILTER_PROMPT_FROM
         formatted_indexes = FORMATTED_INDEXES_FORM
-    elif collection_name == "term_chunks":
-        filter_prompt = FILTER_PROMPT_TERM
-        formatted_indexes = FORMATTED_INDEXES_TERM
+
     elif collection_name == "template_chunks":
         filter_prompt = FILTER_PROMPT_TEMPLATE
         formatted_indexes = FORMATTED_INDEXES_TEMPLATE
@@ -271,6 +286,15 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
     print(filter_condition)
     print("###" + "_"*50 + "###")
     
+    # Nếu automate_filtering thất bại, fallback về vector search ngay
+    if filter_condition is None:
+        print("automate_filtering failed, falling back to vector search")
+        return qdrant_client.search(
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=limit,
+            with_payload=True
+        ), None
 
     try:
         filter_result = qdrant_client.query_points(
@@ -282,7 +306,9 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             with_vectors=False
         ).points
 
+        # Nếu có filter nhưng không có kết quả, fallback về vector search 
         if filter_condition is not None and len(filter_result) == 0:
+            print(f"Filter returned {len(filter_result)} results, falling back to vector search")
             vector_search_results = qdrant_client.search(
                 collection_name=collection_name,
                 query_vector=query_embedding,
@@ -309,21 +335,7 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             return vector_search_results, filter_condition
 
 
-def search_qdrant_by_parent_id(collection_name, parent_id, limit=30):
-    """Truy vấn Qdrant lấy các chunk theo parent_id."""
-    filter_condition = {
-        "must": [
-            {"key": "parent_id", "match": {"value": parent_id}}
-        ]
-    }
-    results, _ = qdrant_client.scroll(
-        collection_name=collection_name,
-        scroll_filter=filter_condition,
-        limit=limit,
-        with_payload=True,
-        with_vectors=False
-    )
-    return results
+# Đã bỏ hàm search_qdrant_by_parent_id vì không còn parent_id trong cấu trúc dữ liệu mới
 
 def search_qdrant_by_id(collection_name, doc_id, limit=1):
     """Truy vấn Qdrant lấy các chunk theo id."""

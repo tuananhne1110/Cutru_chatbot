@@ -22,7 +22,7 @@ except Exception as e:
     logger.error(f"Failed to initialize AWS Bedrock client: {e}")
     bedrock_client = None
 
-def call_llm_stream(prompt, model="claude", max_tokens=4000, temperature=0.5):
+def call_llm_stream(prompt, model="claude", max_tokens=1000, temperature=0.3):
     """Stream response from AWS Bedrock."""
     if not bedrock_client:
         yield "Xin lỗi, không thể kết nối đến AWS Bedrock. Vui lòng thử lại sau."

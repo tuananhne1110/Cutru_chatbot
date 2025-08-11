@@ -14,14 +14,12 @@ from config.app_config import qdrant_client as client
 json_files = [
     'data/chunking/output_json/form_chunks.json',
     'data/chunking/output_json/all_laws.json',
-    'data/chunking/output_json/term_chunks.json',
     'data/chunking/output_json/procedure_chunks.json',
     'data/chunking/output_json/template_chunks.json'
 ]
 
 form_chunks = []
 law_chunks = []
-term_chunks = []
 procedure_chunks = []
 template_chunks = []
 
@@ -33,8 +31,6 @@ for json_file in json_files:
         for chunk in chunks:
             if 'form_code' in chunk or 'form_name' in chunk:
                 form_chunks.append(chunk)
-            elif 'term' in chunk or 'definition' in chunk or 'glossary' in chunk:
-                term_chunks.append(chunk)
             elif 'procedure_code' in chunk or 'procedure_name' in chunk or chunk.get('category') == 'procedure':
                 procedure_chunks.append(chunk)
             elif 'category' in chunk and chunk.get('category') == 'templates':
@@ -48,7 +44,6 @@ for json_file in json_files:
 
 print(f"Form chunks: {len(form_chunks)}")
 print(f"Law chunks: {len(law_chunks)}")
-print(f"Term chunks: {len(term_chunks)}")
 print(f"Procedure chunks: {len(procedure_chunks)}")
 print(f"Template chunks: {len(template_chunks)}")
 
@@ -56,8 +51,26 @@ print(f"Template chunks: {len(template_chunks)}")
 # 3. Hàm chuẩn hóa text và metadata về lowercase
 def prepare_text_for_embedding(chunk):
     parts = []
+    
+    # Xử lý dữ liệu luật (cấu trúc mới: chỉ có chapter và content)
+    if chunk.get('category') == 'law':
+        if chunk.get('law_name'):
+            parts.append(f"Law: {chunk.get('law_name', '')}")
+        if chunk.get('law_code'):
+            parts.append(f"Code: {chunk.get('law_code', '')}")
+        if chunk.get('chapter'):
+            parts.append(f"Chapter: {chunk.get('chapter', '')}")
+        if chunk.get('chapter_content'):
+            parts.append(f"Chapter Content: {chunk.get('chapter_content', '')}")
+        if chunk.get('content'):
+            parts.append(f"Content: {chunk.get('content', '')}")
+        return " | ".join(parts).lower()
+    
+    # Xử lý dữ liệu form
     if 'form_name' in chunk:
         parts.append(f"Form: {chunk.get('form_name', '')}")
+    
+    # Xử lý dữ liệu procedure
     if 'procedure_name' in chunk:
         parts.append(f"Procedure: {chunk.get('procedure_name', '')}")
         if chunk.get('procedure_code'):
@@ -66,22 +79,30 @@ def prepare_text_for_embedding(chunk):
             parts.append(f"Level: {chunk.get('implementation_level')}")
         if chunk.get('field'):
             parts.append(f"Field: {chunk.get('field')}")
+    
+    # Xử lý dữ liệu term
     if 'term' in chunk:
         parts.append(f"Term: {chunk.get('term', '')}")
         if chunk.get('definition'):
             parts.append(f"Definition: {chunk.get('definition')}")
+    
+    # Xử lý các field chung
     if chunk.get("field_no"):
         parts.append(f"Field {chunk.get('field_no')}: {chunk.get('field_name', '')}")
     elif chunk.get("field_name"):
         parts.append(f"Field: {chunk.get('field_name', '')}")
-    if chunk.get("content"):
+    
+    if chunk.get("content") and chunk.get('category') != 'law':
         parts.append(f"Content: {chunk.get('content')}")
+    
     if chunk.get("note"):
         parts.append(f"Note: {chunk.get('note')}")
     if chunk.get("requirements"):
         parts.append(f"Requirements: {chunk.get('requirements')}")
     if chunk.get("implementation_result"):
         parts.append(f"Result: {chunk.get('implementation_result')}")
+    
+    # Xử lý template
     if 'code' in chunk:
         parts.append(f"Template Code: {chunk.get('code', '')}")
     if 'name' in chunk:
@@ -92,6 +113,7 @@ def prepare_text_for_embedding(chunk):
         parts.append(f"Procedures: {chunk.get('procedures')}")
     if chunk.get('file_url'):
         parts.append(f"File URL: {chunk.get('file_url')}")
+    
     return " | ".join(parts).lower()
 
 def lower_metadata(chunk):
@@ -152,7 +174,6 @@ def insert_chunks(client, collection_name, chunks, model):
 # 6. Insert từng loại chunk
 insert_chunks(client, "form_chunks", form_chunks, embedding_model)
 insert_chunks(client, "legal_chunks", law_chunks, embedding_model)
-insert_chunks(client, "term_chunks", term_chunks, embedding_model)
 insert_chunks(client, "procedure_chunks", procedure_chunks, embedding_model)
 insert_chunks(client, "template_chunks", template_chunks, embedding_model)
 

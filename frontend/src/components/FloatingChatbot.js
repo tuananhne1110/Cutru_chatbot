@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import CT01Modal from './CT01Modal';
+import VoiceRecorder from './VoiceRecorder';
+import VoiceSupportInfo from './VoiceSupportInfo';
+import VoiceTypingIndicator from './VoiceTypingIndicator';
+import useVoiceToText from '../hooks/useVoiceToText';
 
 function FloatingChatbot({ 
   messages, 
@@ -22,6 +26,32 @@ function FloatingChatbot({
   const [isMinimized, setIsMinimized] = useState(true);
   const [isCT01ModalOpen, setIsCT01ModalOpen] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Voice-to-text hook
+  const {
+    isRecording,
+    isLoading: voiceLoading,
+    error: voiceError,
+    currentText: voiceText,
+    toggleRecording,
+    stopRecording
+  } = useVoiceToText((text) => {
+    setInputMessage(text);
+  });
+
+  // Auto-send message when recording stops
+  useEffect(() => {
+    if (!isRecording && voiceText && voiceText.trim()) {
+      // Small delay to ensure text is properly set
+      const timer = setTimeout(() => {
+        if (inputMessage && inputMessage.trim()) {
+          onSend();
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isRecording, voiceText, inputMessage, onSend]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,15 +167,31 @@ function FloatingChatbot({
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Voice Typing Indicator */}
+          <VoiceTypingIndicator 
+            isStreaming={isRecording && voiceText && voiceText.trim()} 
+            text={voiceText} 
+          />
+
           {/* Input Area - y hệt như UI.html */}
           <div className="p-4 bg-white border-t border-gray-200">
+            <VoiceRecorder
+              isRecording={isRecording}
+              currentText={voiceText}
+              error={voiceError}
+              onStop={stopRecording}
+            />
+            
             <MessageInput
               inputMessage={inputMessage}
               setInputMessage={setInputMessage}
               handleKeyPress={handleKeyPress}
               onSend={onSend}
-              isLoading={isLoading}
+              isLoading={isLoading || voiceLoading}
+              onVoiceInput={toggleRecording}
+              isVoiceStreaming={isRecording && voiceText && voiceText.trim()}
             />
+            <VoiceSupportInfo />
           </div>
         </div>
       )}

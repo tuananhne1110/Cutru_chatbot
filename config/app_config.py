@@ -34,11 +34,23 @@ def load_langsmith_config(yaml_path="config/config.yaml"):
     config = load_config(yaml_path)
     return config.get("langsmith", {})
 
+def load_voice_config(yaml_path="config/config.yaml"):
+    config = load_config(yaml_path)
+    return config.get("voice_to_text", {})
+
 # Load configurations
 embedding_cfg = load_embedding_config()
 langsmith_cfg = load_langsmith_config()
+voice_cfg = load_voice_config()
+
 embedding_model_name = embedding_cfg.get("model_name", "Alibaba-NLP/gte-multilingual-base")
 embedding_model = SentenceTransformer(embedding_model_name, trust_remote_code=True)
+
+# Preload voice-to-text model if enabled
+from config.voice_init import initialize_voice_model, get_voice_model_info
+
+voice_model = initialize_voice_model(voice_cfg)
+voice_model_info = get_voice_model_info(voice_cfg)
 
 # Initialize LangSmith tracing if enabled
 if langsmith_cfg.get("tracing_enabled", False) and LANGCHAIN_API_KEY:

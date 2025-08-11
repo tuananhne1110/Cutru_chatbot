@@ -54,7 +54,7 @@ async def generate_answer(state: ChatState) -> ChatState:
                 
                 loop = asyncio.get_running_loop()
                 answer_chunks = []
-                for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(question, model_name))):
+                for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(question, model_name, max_tokens=500, temperature=0.3))):
                     answer_chunks.append(chunk)
                 answer = "".join(answer_chunks)
                 state["answer"] = answer
@@ -142,10 +142,22 @@ async def generate_answer(state: ChatState) -> ChatState:
         from services.llm_service import call_llm_stream
         answer_chunks = []
         raw_llm_response = []
-        for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, model_name))):
+        for chunk in await loop.run_in_executor(None, lambda: list(call_llm_stream(prompt, model_name, max_tokens=800, temperature=0.2))):
             answer_chunks.append(chunk)
             raw_llm_response.append(chunk)
         answer = "".join(answer_chunks)
+        
+        # Post-processing: cắt bớt nếu câu trả lời quá dài
+        if len(answer) > 1500:  # Giới hạn 1500 ký tự
+            # Tìm vị trí cắt hợp lý (cuối câu)
+            cut_position = answer.rfind('.', 0, 1500)
+            if cut_position == -1:
+                cut_position = answer.rfind('\n', 0, 1500)
+            if cut_position == -1:
+                cut_position = 1500
+            answer = answer[:cut_position + 1].strip()
+            logger.info(f"[Generate] Truncated long answer from {len(''.join(answer_chunks))} to {len(answer)} characters")
+        
         state["answer"] = answer
         state["answer_chunks"] = answer_chunks 
         # Log usage details

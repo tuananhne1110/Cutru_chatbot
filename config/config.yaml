@@ -36,49 +36,56 @@ llm:
   default_model_name: "us.meta.llama4-scout-17b-instruct-v1:0"
 embedding:
   model_name: "Alibaba-NLP/gte-multilingual-base"
+
+voice_to_text:
+  model_name: "vinai/PhoWhisper-medium"
+  batch_size: 8
+  num_workers: 1
+  device: null  # null for auto-detect, 0 for GPU, -1 for CPU
+  preload_model: true
+  vad_aggressiveness: 3
+  frame_duration: 30
+  sample_rate: 16000
 intent:
   router_system_prompt: |
     Bạn là một trợ lý thông minh có khả năng định tuyến truy vấn người dùng đến MỘT hoặc NHIỀU cơ sở dữ liệu chuyên biệt.
-    Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
+    Hiện có 5 cơ sở dữ liệu mà bạn có thể sử dụng:
     1. **thu_tuc_hanh_chinh**: Truy vấn liên quan đến thủ tục hành chính trong lĩnh vực cư trú như: trình tự, thành phần hồ sơ, cách thực hiện, thời gian xử lý,...
     2. **luat_cu_tru**: Truy vấn liên quan đến văn bản pháp lý, căn cứ pháp lý, điều luật, quy định trong lĩnh vực cư trú.
     3. **giay_to_cu_tru**: Truy vấn liên quan đến cách điền giấy tờ, biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
-    4. **thuat_ngu_cu_tru**: Truy vấn cần định nghĩa, giải thích các thuật ngữ, khái niệm chuyên ngành liên quan đến cư trú.
-    5. **template_cu_tru**: Truy vấn liên quan đến biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
-    6. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
+    4. **template_cu_tru**: Truy vấn liên quan đến biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
+    5. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
     ## Chú ý: 
      - Nếu truy vấn về thủ tục hành chính, hãy trả về cả các cơ sở dữ liệu về quy định pháp lý và biểu mẫu nếu có liên quan.
      - Với mỗi truy vấn, hãy liệt kê đầy đủ tất cả các tool phù hợp (không loại trừ lẫn nhau).
-     - khi câu truy vấn là liên quan đến các trường hơp hay tình huống cụ thể thì Truy vấn liên quan đến văn bản pháp lý
-     - các câu truy vấn liên quan đến hai cơ sơ dữ liệu khác nhau thì nên trả về 2 cơ sơ dữ liệu
+     - Khi câu truy vấn liên quan đến các trường hợp hay tình huống cụ thể thì truy vấn liên quan đến văn bản pháp lý
+     - Các câu truy vấn liên quan đến hai cơ sở dữ liệu khác nhau thì nên trả về 2 cơ sở dữ liệu
   
-  keywords:
-    law: ["luật", "điều", "khoản", "quy định", "ban hành", "nghị định", "thông tư"]
-    form: ["mẫu", "biểu mẫu", "điền", "CT01", "CT02", "NA17", "tờ khai"]
-    term: ["thuật ngữ", "định nghĩa", "là gì", "nghĩa là", "giải thích"]
-    procedure: ["thủ tục", "quy trình", "đăng ký", "cư trú", "tạm trú", "thường trú"]
+
   
   intent_to_collections:
     procedure: [procedure_chunks, legal_chunks, template_chunks]
     law: [legal_chunks]
     form: [form_chunks, template_chunks]
-    term: [term_chunks, legal_chunks]
+    term: [legal_chunks]
     template: [template_chunks]
     general: [general_chunks]
 
 prompt_templates:
   base_template: |
     Bạn là chuyên gia pháp lý về pháp luật hành chính và cư trú tại Việt Nam.
-    VAI TRÒ VÀ TRÁCH NHIỆM:
-    - Trả lời chính xác, chi tiết và đầy đủ theo câu hỏi bên dưới
-    - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO để trả lời. Không suy đoán ngoài phạm vi
-    - Khi trả lời về thủ tục, giấy tờ, hồ sơ: liệt kê đầy đủ từng loại giấy tờ, số lượng, yêu cầu cụ thể
-    - Khi trả lời về luật pháp: TRÍCH DẪN ĐẦY ĐỦ nội dung các điều, khoản, điểm liên quan (không chỉ nhắc tên điều luật)
-    - Sắp xếp thông tin theo thứ tự logic và dễ hiểu
+    
+    NGUYÊN TẮC TRẢ LỜI:
+    - Trả lời NGẮN GỌN, TẬP TRUNG vào câu hỏi cụ thể
+    - Chỉ dùng thông tin từ phần THÔNG TIN THAM KHẢO. Không suy đoán ngoài phạm vi
+    - Ưu tiên thông tin QUAN TRỌNG NHẤT và TRỰC TIẾP NHẤT với câu hỏi
+    - Tránh lặp lại thông tin không cần thiết
+    - Khi trích dẫn luật: chỉ nêu điểm chính, tránh copy nguyên văn dài dòng
+    - Cấu trúc: TRỰC TIẾP trả lời câu hỏi → Nêu căn cứ pháp lý chính → Kết luận ngắn gọn
 
     THÔNG TIN THAM KHẢO:
     {context}
 
     CÂU HỎI: {question}
 
-    TRẢ LỜI: 
+    TRẢ LỜI (ngắn gọn, tập trung): 
