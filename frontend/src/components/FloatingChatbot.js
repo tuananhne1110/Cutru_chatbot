@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Message from './Message';
 import MessageInput from './MessageInput';
+import CT01Modal from './CT01Modal';
+import VoiceRecorder from './VoiceRecorder';
+import VoiceSupportInfo from './VoiceSupportInfo';
+import VoiceTypingIndicator from './VoiceTypingIndicator';
+import useVoiceToText from '../hooks/useVoiceToText';
 
 function FloatingChatbot({ 
   messages, 
@@ -14,11 +19,39 @@ function FloatingChatbot({
   handleKeyPress, 
   loadChatHistory, 
   clearChatHistory, 
-  createNewSession 
+  createNewSession,
+  openCT01Modal
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(true);
+  const [isCT01ModalOpen, setIsCT01ModalOpen] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Voice-to-text hook
+  const {
+    isRecording,
+    isLoading: voiceLoading,
+    error: voiceError,
+    currentText: voiceText,
+    toggleRecording,
+    stopRecording
+  } = useVoiceToText((text) => {
+    setInputMessage(text);
+  });
+
+  // Auto-send message when recording stops
+  useEffect(() => {
+    if (!isRecording && voiceText && voiceText.trim()) {
+      // Small delay to ensure text is properly set
+      const timer = setTimeout(() => {
+        if (inputMessage && inputMessage.trim()) {
+          onSend();
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isRecording, voiceText, inputMessage, onSend]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -35,85 +68,82 @@ function FloatingChatbot({
     }
   };
 
-  const minimizeChat = () => {
-    setIsExpanded(false);
-    setIsMinimized(true);
+  // Removed unused functions to fix ESLint warnings
+
+  const handleChatMessage = (message) => {
+    // This would need to be handled by the parent component
+    // For now, we'll just log it
   };
 
-  const expandChat = () => {
-    setIsExpanded(true);
-    setIsMinimized(false);
+  const closeCT01Modal = () => {
+    setIsCT01ModalOpen(false);
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
-      {/* Minimized Chat Button */}
+    <div className="fixed bottom-5 right-5 z-[2500] transition-all duration-300">
+      {/* Minimized Chat Button - y hệt như UI.html */}
       {isMinimized && (
         <button
           onClick={toggleChat}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-full p-4 shadow-lg transition-all duration-300 hover:scale-110 bounce-in"
+          className="w-15 h-15 bg-gradient-to-br from-blue-500 to-purple-600 border-none rounded-full text-white text-2xl cursor-pointer shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center"
           title="Mở chatbot"
         >
-          <div className="flex items-center space-x-2">
-            <span className="text-2xl">🤖</span>
-            <span className="text-sm font-medium">Chat</span>
-          </div>
+          🤖
         </button>
       )}
 
-      {/* Chat Window */}
+      {/* Chat Window - y hệt như UI.html */}
       {!isMinimized && (
-        <div className={`bg-white rounded-lg shadow-xl border transition-all duration-300 ${
-          isExpanded 
-            ? 'w-96 h-[600px]' 
-            : 'w-80 h-[500px]'
+        <div className={`absolute bottom-16 right-0 w-[350px] h-[500px] bg-white rounded-2xl shadow-2xl border transition-all duration-300 ${
+          isExpanded ? 'w-96 h-[600px]' : 'w-[350px] h-[500px]'
         }`}>
           {/* Header */}
-          <div className="flex justify-between items-center p-4 border-b bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
-            <div className="flex items-center space-x-2">
-              <span className="text-xl">🤖</span>
-              <div>
-                <h3 className="font-semibold">Trợ lý Ảo</h3>
-                <p className="text-xs opacity-90">Chính phủ điện tử</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-1">
-              {!isExpanded && (
-                <button
-                  onClick={expandChat}
-                  className="p-1 hover:bg-blue-800 rounded transition-colors"
-                  title="Mở rộng"
-                >
-                  ⬜
-                </button>
-              )}
-              {isExpanded && (
-                <button
-                  onClick={minimizeChat}
-                  className="p-1 hover:bg-blue-800 rounded transition-colors"
-                  title="Thu nhỏ"
-                >
-                  ⬛
-                </button>
-              )}
-              <button
-                onClick={toggleChat}
-                className="p-1 hover:bg-blue-800 rounded transition-colors"
-                title="Đóng"
-              >
-                ✕
-              </button>
-            </div>
+          <div className="bg-gradient-to-br from-blue-500 to-purple-600 text-white p-4 rounded-t-2xl flex justify-between items-center">
+            <div className="text-base font-semibold">🤖 Trợ lý Ảo</div>
+            <button
+              onClick={toggleChat}
+              className="bg-transparent border-none text-white text-xl cursor-pointer w-6 h-6 rounded-full flex items-center justify-center"
+            >
+              ×
+            </button>
           </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages" style={{ height: isExpanded ? '450px' : '350px' }}>
+          {/* Messages Area - y hệt như UI.html */}
+          <div className="flex-1 p-4 overflow-y-auto bg-gray-50" style={{ height: isExpanded ? '450px' : '350px' }}>
             {messages.length === 0 && !isLoading && (
               <div className="text-center text-gray-500 py-6">
                 <span className="text-3xl block mb-2">🤖</span>
                 <p className="text-sm font-medium">Chào mừng bạn!</p>
                 <p className="text-xs text-gray-400 mt-1">Tôi là trợ lý ảo của Chính phủ điện tử</p>
-                <p className="text-xs text-gray-400">Hãy đặt câu hỏi để được hỗ trợ</p>
+                <p className="text-xs text-gray-400 mb-4">Hãy đặt câu hỏi để được hỗ trợ</p>
+                
+                {/* Suggestion chips - y hệt như UI.html */}
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <button 
+                    onClick={() => {
+                      onSend('Điền biểu mẫu CT01');
+                      // Mở modal ngay lập tức
+                      setTimeout(() => {
+                        openCT01Modal();
+                      }, 500);
+                    }}
+                    className="bg-gray-200 border-none px-3 py-1 rounded-full text-xs cursor-pointer transition-all duration-200 hover:bg-blue-500 hover:text-white"
+                  >
+                    📝 Điền CT01
+                  </button>
+                  <button 
+                    onClick={() => onSend('Tra cứu thủ tục')}
+                    className="bg-gray-200 border-none px-3 py-1 rounded-full text-xs cursor-pointer transition-all duration-200 hover:bg-blue-500 hover:text-white"
+                  >
+                    🔍 Tra cứu
+                  </button>
+                  <button 
+                    onClick={() => onSend('Hướng dẫn')}
+                    className="bg-gray-200 border-none px-3 py-1 rounded-full text-xs cursor-pointer transition-all duration-200 hover:bg-blue-500 hover:text-white"
+                  >
+                    ❓ Hướng dẫn
+                  </button>
+                </div>
               </div>
             )}
             {messages.map((message) => (
@@ -124,7 +154,7 @@ function FloatingChatbot({
                 toggleSources={toggleSources} 
               />
             ))}
-            {/* Loading indicator giữ chỗ, không làm giật khung */}
+            {/* Loading indicator */}
             <div style={{ minHeight: isLoading ? 32 : 0 }}>
               {isLoading && (
                 <div className="flex justify-start">
@@ -137,27 +167,41 @@ function FloatingChatbot({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="p-3 border-t bg-gray-50">
+          {/* Voice Typing Indicator */}
+          <VoiceTypingIndicator 
+            isStreaming={isRecording && voiceText && voiceText.trim()} 
+            text={voiceText} 
+          />
+
+          {/* Input Area - y hệt như UI.html */}
+          <div className="p-4 bg-white border-t border-gray-200">
+            <VoiceRecorder
+              isRecording={isRecording}
+              currentText={voiceText}
+              error={voiceError}
+              onStop={stopRecording}
+            />
+            
             <MessageInput
               inputMessage={inputMessage}
               setInputMessage={setInputMessage}
               handleKeyPress={handleKeyPress}
               onSend={onSend}
-              isLoading={isLoading}
+              isLoading={isLoading || voiceLoading}
+              onVoiceInput={toggleRecording}
+              isVoiceStreaming={isRecording && voiceText && voiceText.trim()}
             />
+            <VoiceSupportInfo />
           </div>
-
-          {/* Expanded Controls: chỉ giữ lại sessionId */}
-          {isExpanded && (
-            <div className="p-3 border-t bg-gray-50 flex justify-end items-center">
-              <span className="text-xs text-gray-500">
-                {sessionId?.substring(0, 8)}...
-              </span>
-            </div>
-          )}
         </div>
       )}
+
+      {/* CT01 Modal */}
+      <CT01Modal
+        isOpen={isCT01ModalOpen}
+        onClose={closeCT01Modal}
+        onChatMessage={handleChatMessage}
+      />
     </div>
   );
 }

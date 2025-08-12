@@ -9,6 +9,8 @@ from agents.nodes.validate_node import validate_output
 from agents.nodes.memory_node import update_memory
 from agents.nodes.semantic_cache_node import semantic_cache
 from agents.nodes.guardrails_node import guardrails_input
+from config.app_config import langsmith_cfg
+import os
 
 class LangChainRAGComponents:
     def __init__(self):
@@ -47,7 +49,14 @@ def create_rag_workflow():
     workflow.add_edge("validate", "update_memory")
     workflow.add_edge("update_memory", END)
     
-    app = workflow.compile(checkpointer=MemorySaver())
+    # Compile với LangSmith metadata nếu được bật
+    checkpointer = MemorySaver()
+    app = workflow.compile(checkpointer=checkpointer)
+    
+    # Thêm metadata từ config cho LangSmith tracking
+    if langsmith_cfg.get("tracing_enabled", False):
+        app.metadata = langsmith_cfg.get("metadata", {})
+        
     return app
 
 rag_workflow = create_rag_workflow()

@@ -21,46 +21,40 @@ async def rewrite_query_with_context(state: ChatState) -> ChatState:
 
     question = state["question"]
     messages = state["messages"]
+    intent = state.get("intent")
     
-    logger.info(f"[Rewrite] Starting query rewrite for: {question[:50]}...")
+    logger.info(f"[Rewrite] Starting query rewrite for: {question[:50]}... (intent={intent})")
     
     try:
         # Sử dụng Query Rewriter mới với LLM-based approach
-        # Sử dụng LLM client wrapper
         llm_client = llm_client_wrapper
-        
-        # Rewrite câu hỏi sử dụng LLM
+        # Rewrite câu hỏi sử dụng LLM, truyền intent vào
         rewritten_question = await query_rewriter.rewrite_query_with_context(
             current_question=question,
             messages=messages,
-            llm_client=llm_client
+            llm_client=llm_client,
+            intent=intent
         )
-        
         # Nếu rewrite thành công và khác với câu hỏi gốc
         if rewritten_question and rewritten_question != question:
             # Cập nhật state với câu hỏi đã rewrite
             state["original_question"] = question
             state["question"] = rewritten_question
             state["query_rewritten"] = True
-            
         else:
             logger.info(f"[Rewrite] Query kept unchanged (already clear)")
             state["query_rewritten"] = False
-        
         # Tạo context string cho các bước tiếp theo
         context_string, relevant_turns = context_manager.process_conversation_history(
             messages, question
         )
         state["context_string"] = context_string
         state["relevant_turns"] = relevant_turns
-        
         logger.info(f"[Rewrite] Context created: {len(context_string)} characters")
-        
     except Exception as e:
         logger.error(f"[Rewrite] Error in query rewrite: {e}")
         # Fallback: giữ nguyên câu hỏi gốc
         state["query_rewritten"] = False
-        
         # Vẫn tạo context
         try:
             context_string, relevant_turns = context_manager.process_conversation_history(

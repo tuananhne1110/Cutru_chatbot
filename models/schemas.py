@@ -14,22 +14,15 @@ class Source(BaseModel):
     file_url: Optional[str] = None
     metadata: Optional[dict] = None
     
-    # Legal chunks fields
+    # Legal chunks fields (cấu trúc mới: chỉ có Chương và Điều)
     law_name: Optional[str] = None
     law_code: Optional[str] = None
     law_type: Optional[str] = None
     promulgator: Optional[str] = None
     promulgation_date: Optional[str] = None
     effective_date: Optional[str] = None
-    article: Optional[str] = None
     chapter: Optional[str] = None
-    clause: Optional[str] = None
-    point: Optional[str] = None
-    section: Optional[str] = None
-    type: Optional[str] = None
-    parent_id: Optional[str] = None
-    parent_type: Optional[str] = None
-    law_ref: Optional[str] = None
+    chapter_content: Optional[str] = None
     id: Optional[str] = None
     category: Optional[str] = None
     

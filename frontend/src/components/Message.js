@@ -3,13 +3,13 @@ import ReactMarkdown from 'react-markdown';
 
 function Message({ message, showSources, toggleSources }) {
   return (
-    <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-lg p-2 ${
+    <div className={`mb-3 flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
         message.type === 'user'
-          ? 'bg-blue-600 text-white'
+          ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
           : message.type === 'error'
           ? 'bg-red-100 text-red-800'
-          : 'bg-gray-100 text-gray-900'
+          : 'bg-white text-gray-900 border border-gray-200'
       }`}>
         <div className="flex items-start space-x-2">
           <div className="flex-1">

@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from agents.utils.intent_detector import intent_detector, IntentType
 from agents.state import ChatState
 from services.embedding import get_embedding
-from services.qdrant_service import search_qdrant, search_qdrant_by_parent_id, search_qdrant_by_id
+from services.qdrant_service import search_qdrant
 from services.reranker_service import get_reranker
 from langfuse.decorators import observe
 
@@ -43,21 +43,41 @@ async def retrieve_context(state: ChatState) -> ChatState:
     if primary_intent is None:
         logger.error("[Retrieve] Intent is None. State: %s", state)
         raise ValueError("Intent must not be None in retrieve_context")
-    all_collections = set()
-
+    
+    # Ưu tiên primary intent, chỉ thêm các intent phụ nếu thực sự liên quan mạnh
+    primary_collections = set()
+    secondary_collections = set()
+    
+    # Thêm collection cho primary intent
+    if primary_intent == IntentType.LAW:
+        primary_collections.add("legal_chunks")
+    elif primary_intent == IntentType.FORM:
+        primary_collections.add("form_chunks")
+    elif primary_intent == IntentType.TERM:
+        primary_collections.add("legal_chunks")  # Chuyển term search sang legal_chunks
+    elif primary_intent == IntentType.PROCEDURE:
+        primary_collections.add("procedure_chunks")
+    elif primary_intent == IntentType.GENERAL:
+        primary_collections.add("general_chunks")
+    
+    # Thêm tất cả collections liên quan từ all_intents
     for intent, query in all_intents:
-        # Intent detector trả về (intent, query)
         if intent == IntentType.LAW:
-            all_collections.add("legal_chunks")
+            secondary_collections.add("legal_chunks")
         elif intent == IntentType.FORM:
-            all_collections.add("form_chunks")
+            secondary_collections.add("form_chunks")
         elif intent == IntentType.TERM:
-            all_collections.add("term_chunks")
+            secondary_collections.add("legal_chunks")  # Chuyển term search sang legal_chunks
         elif intent == IntentType.PROCEDURE:
-            all_collections.add("procedure_chunks")
+            secondary_collections.add("procedure_chunks")
         elif intent == IntentType.GENERAL:
-            all_collections.add("general_chunks")
-    collections = list(all_collections)
+            secondary_collections.add("general_chunks")
+    
+    # Loại bỏ duplicates
+    secondary_collections = secondary_collections - primary_collections
+    
+    # Kết hợp tất cả collections liên quan
+    collections = list(primary_collections | secondary_collections)
     logger.info(f"[Retrieve] Collections to search (from all intents): {collections}")
     if not collections:
         logger.warning("[Retrieve] No collections found for intents")
@@ -70,184 +90,62 @@ async def retrieve_context(state: ChatState) -> ChatState:
     all_docs = []
     for collection in collections:
         try:
-            search_result = await loop.run_in_executor(None, search_qdrant, collection, embedding, query, 30)
-            # search_qdrant returns (results, filter_condition)
-            if isinstance(search_result, tuple):
-                results, filter_condition = search_result
+            # Điều chỉnh search limit dựa trên số collections
+            if len(collections) == 1:
+                search_limit = 15  # Nếu chỉ 1 collection thì lấy nhiều hơn
+            elif len(collections) == 2:
+                search_limit = 8   # Nếu 2 collections thì lấy ít hơn mỗi collection
             else:
-                results = search_result
-                filter_condition = None
+                search_limit = 6   # Nếu nhiều collections thì lấy ít nhất
+            search_result = await loop.run_in_executor(None, search_qdrant, collection, embedding, query, search_limit)
+            
+            # search_qdrant now returns results directly (similar to vector retriever)
+            results = search_result
+            
             logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
-            logger.info(f"[Retrieve] Results type: {type(results)}")
-            logger.info(f"[Retrieve] First result: {results[0] if results else 'None'}")
-            logger.info(f"[Retrieve] Results structure: {type(results[0]) if results else 'None'}")
-            if results and hasattr(results[0], '__dict__'):
-                logger.info(f"[Retrieve] First result attributes: {list(results[0].__dict__.keys())}")
+            
             for r in results:
                 if hasattr(r, 'payload') and r.payload:
                     content = r.payload.get("content") or r.payload.get("text", "")
-                    all_docs.append(Document(page_content=content, metadata=r.payload))
+                    # Thêm vector score vào metadata để tracking
+                    metadata = dict(r.payload)
+                    metadata["vector_score"] = getattr(r, 'score', 0.0)
+                    all_docs.append(Document(page_content=content, metadata=metadata))
                 elif isinstance(r, dict):
                     content = r.get("content") or r.get("text", "")
-                    all_docs.append(Document(page_content=content, metadata=r))
+                    metadata = dict(r)
+                    metadata["vector_score"] = r.get('score', 0.0)
+                    all_docs.append(Document(page_content=content, metadata=metadata))
         except Exception as e:
+            logger.error(f"[Retrieve] Error searching collection {collection}: {e}")
             logger.warning(f"[Retrieve] Skipping collection: {collection}")
             continue
     logger.info(f"[Retrieve] Total docs before rerank: {len(all_docs)}")
+    
     if all_docs:
+        # Giới hạn số docs để rerank (tối đa 20 docs)
+        docs_to_rerank = min(len(all_docs), 20)
         reranker = get_reranker()
-        reranked_docs = await loop.run_in_executor(None, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs], 30)
+        reranked_docs = await loop.run_in_executor(None, reranker.rerank, query or "", [{"content": doc.page_content} for doc in all_docs[:docs_to_rerank]], docs_to_rerank)
+        
+        # Áp dụng rerank scores và lọc theo threshold
         for i, doc in enumerate(all_docs[:len(reranked_docs)]):
-            doc.metadata["rerank_score"] = reranked_docs[i].get("rerank_score", 0.0)
-    if primary_intent == IntentType.LAW:
-        logger.info("[Retrieve] LAW intent detected - starting parent_id grouping and expansion...")
-        expanded_docs = await _expand_law_chunks_with_structure(all_docs, collections, loop)
-        logger.info(f"[Retrieve] After expansion: {len(expanded_docs)} law docs")
-        merged_docs = _group_law_chunks_tree(expanded_docs)
-        logger.info(f"[Retrieve] Merged law docs: {len(merged_docs)}")
-        state["context_docs"] = merged_docs[:20]
+            rerank_score = reranked_docs[i].get("rerank_score", 0.0)
+            doc.metadata["rerank_score"] = rerank_score
+        
+        # Lọc chỉ lấy docs có rerank_score >= 0.3 và sắp xếp theo rerank_score
+        filtered_docs = [doc for doc in all_docs if doc.metadata.get("rerank_score", 0.0) >= 0.3]
+        filtered_docs.sort(key=lambda x: x.metadata.get("rerank_score", 0.0), reverse=True)
+        
+        logger.info(f"[Retrieve] After rerank filtering (score >= 0.3): {len(filtered_docs)} docs")
+        
+        # Giảm số lượng kết quả cuối cùng xuống 10-15 docs thay vì 30
+        final_limit = 12
+        state["context_docs"] = filtered_docs[:final_limit]
     else:
-        state["context_docs"] = all_docs[:30]
+        state["context_docs"] = []
     logger.info(f"[Retrieve] Retrieval completed: {len(state['context_docs'])} docs")
     duration = time.time() - start_time
     state["processing_time"]["context_retrieval"] = duration
     logger.info(f"[Retrieve] Retrieval time: {duration:.4f}s")
     return state
-
-async def _expand_law_chunks_with_structure(semantic_docs: List[Document], collections: list, loop) -> List[Document]:
-    logger.info(f"[Retrieve] _expand_law_chunks_with_structure: {len(semantic_docs)} semantic docs, collections: {collections}")
-    id_to_doc = {doc.metadata.get("id"): doc for doc in semantic_docs if doc.metadata.get("id")}
-    parent_ids_needed = set()
-    for doc in semantic_docs:
-        doc_id = doc.metadata.get("id")
-        parent_id = doc.metadata.get("parent_id")
-        doc_type = doc.metadata.get("type")
-        if doc_type in ["điểm", "khoản"] and parent_id:
-            parent_ids_needed.add(parent_id)
-    # Truy vấn mở rộng parent_id cho điểm/khoản (ra khoản/điều)
-    expansion_docs = []
-    for parent_id in parent_ids_needed:
-        for collection in collections:
-            results_list = search_qdrant_by_parent_id(collection, parent_id, 30)
-            logger.info(f"[Retrieve] Found {len(results_list)} expansion docs for parent_id {parent_id} in {collection}")
-            for r in results_list:
-                if hasattr(r, 'payload') and r.payload:
-                    content = r.payload.get("content") or r.payload.get("text", "")
-                    expansion_docs.append(Document(page_content=content, metadata=r.payload))
-                elif isinstance(r, dict):
-                    content = r.get("content") or r.get("text", "")
-                    expansion_docs.append(Document(page_content=content, metadata=r))
-    # Bổ sung: Nếu có khoản, lấy parent_id của khoản (ra điều), truy vấn thêm các điều cha
-    khoan_docs = [doc for doc in semantic_docs + expansion_docs if doc.metadata.get("type") == "khoản"]
-    dieu_ids = set(doc.metadata.get("parent_id") for doc in khoan_docs if doc.metadata.get("parent_id"))
-    dieu_expansion_docs = []
-    for dieu_id in dieu_ids:
-        for collection in collections:
-            # Truy vấn theo id (not parent_id) để lấy đúng điều
-            results_list = search_qdrant_by_id(collection, dieu_id, 1)
-            logger.info(f"[Retrieve] Found {len(results_list)} expansion docs for dieu_id {dieu_id} in {collection}")
-            for r in results_list:
-                if hasattr(r, 'payload') and r.payload:
-                    content = r.payload.get("content") or r.payload.get("text", "")
-                    dieu_expansion_docs.append(Document(page_content=content, metadata=r.payload))
-                elif isinstance(r, dict):
-                    content = r.get("content") or r.get("text", "")
-                    dieu_expansion_docs.append(Document(page_content=content, metadata=r))
-            # BỔ SUNG: Lấy tất cả các khoản có parent_id = dieu_id (các khoản khác cùng điều)
-            all_khoan_results = search_qdrant_by_parent_id(collection, dieu_id, 50)  # Tăng limit để lấy hết
-            logger.info(f"[Retrieve] Found {len(all_khoan_results)} khoản docs for dieu_id {dieu_id} in {collection}")
-            for r in all_khoan_results:
-                if hasattr(r, 'payload') and r.payload:
-                    content = r.payload.get("content") or r.payload.get("text", "")
-                    dieu_expansion_docs.append(Document(page_content=content, metadata=r.payload))
-                elif isinstance(r, dict):
-                    content = r.get("content") or r.get("text", "")
-                    dieu_expansion_docs.append(Document(page_content=content, metadata=r))
-            # BỔ SUNG: Với mỗi khoản, lấy tất cả điểm con
-            for r in all_khoan_results:
-                khoan_id = r.payload.get("id") if hasattr(r, 'payload') and r.payload else r.get("id")
-                if khoan_id:
-                    diem_results = search_qdrant_by_parent_id(collection, khoan_id, 30)
-                    logger.info(f"[Retrieve] Found {len(diem_results)} điểm docs for khoan_id {khoan_id} in {collection}")
-                    for diem_r in diem_results:
-                        if hasattr(diem_r, 'payload') and diem_r.payload:
-                            content = diem_r.payload.get("content") or diem_r.payload.get("text", "")
-                            dieu_expansion_docs.append(Document(page_content=content, metadata=diem_r.payload))
-                        elif isinstance(diem_r, dict):
-                            content = diem_r.get("content") or diem_r.get("text", "")
-                            dieu_expansion_docs.append(Document(page_content=content, metadata=diem_r))
-    all_docs = {doc.metadata.get("id"): doc for doc in semantic_docs + expansion_docs + dieu_expansion_docs if doc.metadata.get("id")}
-    logger.info(f"[Retrieve] Law chunk expansion: semantic={len(semantic_docs)}, expanded={len(expansion_docs)}, dieu_expanded={len(dieu_expansion_docs)}, total={len(all_docs)}")
-    return list(all_docs.values())
-
-def _group_law_chunks_tree(all_docs: List[Document]) -> List[Document]:
-    """Nhóm các đoạn luật thành cây Điều → Khoản → Điểm, trả về list Document đã merge theo đúng cấu trúc pháp lý."""
-    import logging
-    logger = logging.getLogger("agents.nodes.retrieve_node")
-    logger.info(f"[MergeLaw] Tổng số doc đầu vào: {len(all_docs)}")
-    n_diem = sum(1 for doc in all_docs if doc.metadata.get("type") == "điểm")
-    n_khoan = sum(1 for doc in all_docs if doc.metadata.get("type") == "khoản")
-    n_dieu = sum(1 for doc in all_docs if doc.metadata.get("type") == "điều")
-    logger.info(f"[MergeLaw] Số điều: {n_dieu}, số khoản: {n_khoan}, số điểm: {n_diem}")
-    # Bước 1: Tạo index theo id
-    id_to_doc = {doc.metadata.get("id"): doc for doc in all_docs if doc.metadata.get("id")}
-    # Bước 2: Gom nhóm các điểm vào khoản cha
-    clause_id_to_points = {}
-    for doc in all_docs:
-        meta = doc.metadata
-        if meta.get("type") == "điểm":
-            parent_id = meta.get("parent_id")
-            if parent_id:
-                clause_id_to_points.setdefault(parent_id, []).append(doc)
-    logger.info(f"[MergeLaw] Số khoản có điểm: {len(clause_id_to_points)}")
-    # Bước 3: Gom nhóm các khoản vào điều cha, kèm các điểm con
-    article_id_to_clauses = {}
-    for doc in all_docs:
-        meta = doc.metadata
-        if meta.get("type") == "khoản":
-            parent_id = meta.get("parent_id")
-            if parent_id:
-                # Gắn các điểm con vào khoản này
-                points = clause_id_to_points.get(meta.get("id"), [])
-                doc_points = sorted(points, key=lambda d: d.metadata.get("point", ""))
-                doc.metadata["_points"] = doc_points
-                article_id_to_clauses.setdefault(parent_id, []).append(doc)
-    logger.info(f"[MergeLaw] Số điều có khoản: {len(article_id_to_clauses)}")
-    # Bước 4: Gom nhóm các điều, kèm các khoản con (và điểm con trong khoản)
-    merged_docs = []
-    for doc in all_docs:
-        meta = doc.metadata
-        if meta.get("type") == "điều":
-            article_id = meta.get("id")
-            law_name = meta.get("law_name", "")
-            chapter = meta.get("chapter", "")
-            article = meta.get("article", "")
-            title = f"{law_name}"
-            if chapter:
-                title += f" - {chapter}"
-            if article:
-                title += f" - Điều {article}"
-            content_lines = []
-            # Nội dung của điều (nếu có)
-            if doc.page_content.strip():
-                content_lines.append(doc.page_content.strip())
-            # Các khoản con
-            clauses = article_id_to_clauses.get(article_id, [])
-            clauses = sorted(clauses, key=lambda d: int(d.metadata.get("clause", "99")))
-            for clause_doc in clauses:
-                clause = clause_doc.metadata.get("clause", "")
-                clause_content = clause_doc.page_content.strip()
-                content_lines.append(f"- Khoản {clause}: {clause_content}")
-                # Các điểm con của khoản này
-                points = clause_doc.metadata.get("_points", [])
-                points = sorted(points, key=lambda d: d.metadata.get("point", ""))
-                for point_doc in points:
-                    point = point_doc.metadata.get("point", "")
-                    point_content = point_doc.page_content.strip()
-                    content_lines.append(f"  + Điểm {point}: {point_content}")
-            merged_text = "\n".join(content_lines)
-            merged_docs.append(Document(page_content=f"{title}\n{merged_text}", metadata=meta))
-    logger.info(f"[MergeLaw] Số doc sau merge: {len(merged_docs)}")
-    for i, doc in enumerate(merged_docs[:3]):
-        logger.info(f"[MergeLaw] Doc {i+1}: {doc.metadata}, content: {doc.page_content[:200]}")
-    return merged_docs 
