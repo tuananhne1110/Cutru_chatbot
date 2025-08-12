@@ -10,6 +10,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 import gc
 from typing import Optional, Tuple
+from collections import deque
+
+try:
+    from scipy.signal import resample_poly as scipy_resample_poly
+except Exception:
+    scipy_resample_poly = None
 
 class SpeechRecognizer:
     def __init__(self, 
@@ -25,12 +31,15 @@ class SpeechRecognizer:
         - Bắt đầu luồng transcription
         """
         
-        
         # Xác định thiết bị dùng GPU nếu có
         self.device = device if device is not None else (0 if torch.cuda.is_available() else -1)
         self.batch_size = batch_size
         self.num_workers = num_workers
         
+        # Thiết bị ghi âm và samplerate hiện tại
+        self.input_device: Optional[int] = None
+        self.current_samplerate: int = 16000
+
         # Hàng đợi để lưu audio chưa xử lý
         self.audio_queue = queue.Queue(maxsize=10)  # Giới hạn để tránh memory leak
         # Hàng đợi để lưu kết quả text sau khi xử lý
@@ -39,13 +48,18 @@ class SpeechRecognizer:
         # Tạo thread pool để xử lý song song
         self.executor = ThreadPoolExecutor(max_workers=num_workers)
         
+        # Prompt cho mô hình (cần có TRƯỚC khi _load_model_optimized gọi warmup)
+        self.initial_prompt = (
+            "Tiếng Việt. Chủ đề pháp luật, thủ tục hành chính Việt Nam. Viết có dấu, giữ dấu câu."
+        )
+
         # Load model một lần duy nhất
         print("Đang tải model...")
-        self.pipe = self._load_model_optimized(model_name)
+        self._load_model_optimized(model_name)
         print("Model đã được tải ")
         
-        # Khởi tạo bộ phát hiện giọng nói WebRTC
-        self.vad = webrtcvad.Vad(3)
+        # Khởi tạo bộ phát hiện giọng nói WebRTC (mode=2)
+        self.vad = webrtcvad.Vad(2)
         
         # Biến dùng để lưu buffer âm thanh
         self.buffer = []
@@ -62,30 +76,125 @@ class SpeechRecognizer:
         self.transcribe_thread.start()
 
         self.text = ""  # Biến lưu kết quả phiên âm
+
+        # Tham số phân đoạn/gom gửi (giảm độ trễ)
+        self.min_segment_sec = 2.0   # gom tối thiểu ~2s
+        self.max_segment_sec = 3.0   # tối đa 3s trước khi buộc gửi
+        self.overlap_sec = 0.8       # chồng lấn ~0.8s giữa các lần gửi
+
+        # VAD ring buffer ~ 200ms (khung 30ms → ~7 khung)
+        self.vad_ring_ms = 200
+        self.vad_ring = deque(maxlen=int(max(1, self.vad_ring_ms / 30)))
+
+        # Prompt cho mô hình
+        self.initial_prompt = (
+            "Tiếng Việt. Chủ đề pháp luật, thủ tục hành chính Việt Nam. Viết có dấu, giữ dấu câu."
+        )
+
+    def _select_input_device(self) -> Optional[int]:
+        try:
+            devices = sd.query_devices()
+            # Windows: ưu tiên WASAPI input
+            try:
+                hostapis = sd.query_hostapis()
+                wasapi_index = None
+                for i, ha in enumerate(hostapis):
+                    if isinstance(ha, dict) and 'name' in ha and 'wasapi' in ha['name'].lower():
+                        wasapi_index = i
+                        break
+                if wasapi_index is not None:
+                    for i, d in enumerate(devices):
+                        if isinstance(d, dict) and d.get('hostapi') == wasapi_index and d.get('max_inputs', 0) > 0:
+                            return i
+            except Exception:
+                pass
+
+            # Default input device
+            try:
+                default_in = sd.query_devices(kind='input')
+                if isinstance(sd.default.device, (list, tuple)):
+                    return sd.default.device[0]
+            except Exception:
+                pass
+
+            # Fallback: Chọn device đầu tiên có input
+            for i, d in enumerate(devices):
+                if isinstance(d, dict) and d.get('max_inputs', 0) > 0:
+                    return i
+        except Exception:
+            return None
+        return None
+
+    def _detect_samplerate(self) -> int:
+        try:
+            if self.input_device is not None:
+                info = sd.query_devices(self.input_device)
+            else:
+                info = sd.query_devices(kind='input')
+            sr = int(info.get('default_samplerate', 16000)) if isinstance(info, dict) else 16000
+            return sr or 16000
+        except Exception:
+            return 16000
+
+    def _resample_to_16k(self, audio_chunk: np.ndarray, src_rate: int) -> np.ndarray:
+        if src_rate == 16000 or len(audio_chunk) == 0:
+            return audio_chunk.astype(np.float32)
+        duration = len(audio_chunk) / float(src_rate)
+        num_out = int(duration * 16000)
+        if num_out <= 0:
+            return audio_chunk.astype(np.float32)
+        t_src = np.linspace(0.0, duration, num=len(audio_chunk), endpoint=False, dtype=np.float32)
+        t_dst = np.linspace(0.0, duration, num=num_out, endpoint=False, dtype=np.float32)
+        resampled = np.interp(t_dst, t_src, audio_chunk.astype(np.float32)).astype(np.float32)
+        return resampled
         
     def _load_model_optimized(self, model_name: str):
         """
         Tải mô hình speech-to-text với cấu hình tối ưu (dùng GPU nếu có).
         Làm nóng model để giảm độ trễ ban đầu.
         """
-        pipe = pipeline(
-            "automatic-speech-recognition",
-            model=model_name,
-            device=self.device,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            model_kwargs={
-                "use_cache": True,
-                "low_cpu_mem_usage": True,
-            }
-        )
+        # Sử dụng logic đơn giản như voice.py
+        from transformers import WhisperProcessor, WhisperForConditionalGeneration
+        
+        self.processor = WhisperProcessor.from_pretrained(model_name)
+        self.model = WhisperForConditionalGeneration.from_pretrained(model_name)
+        
+        # Chuyển model sang GPU nếu có
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            print("Đang sử dụng GPU")
+        else:
+            print("Đang sử dụng CPU")
         
         # Làm nóng model bằng audio giả
         if torch.cuda.is_available():
             dummy_audio = np.random.random(16000).astype(np.float32)
-            _ = pipe({"raw": dummy_audio, "sampling_rate": 16000}, batch_size=1)
+            input_features = self.processor(
+                dummy_audio, 
+                sampling_rate=16000, 
+                return_tensors="pt"
+            ).input_features
+            
+            if torch.cuda.is_available():
+                input_features = input_features.cuda()
+            
+            # Tạo token ids cho tiếng Việt
+            forced_decoder_ids = self.processor.get_decoder_prompt_ids(
+                language="vi", 
+                task="transcribe"
+            )
+            
+            with torch.no_grad():
+                _ = self.model.generate(
+                    input_features,
+                    forced_decoder_ids=forced_decoder_ids,
+                    max_length=448,
+                    num_beams=5,
+                    early_stopping=True
+                )
             torch.cuda.empty_cache()
             
-        return pipe
+        return None  # Không cần trả về pipe nữa
     # ----------------------------------------
     # Luồng xử lý audio: nhận từ queue → transcribe
     # ----------------------------------------
@@ -151,7 +260,7 @@ class SpeechRecognizer:
     def _transcribe_batch(self, batch_audio: list) -> list:
         """
         Xử lý một batch audio. Trả về danh sách kết quả text tương ứng.
-        Theo dõi thời gian xử lý để đánh giá hiệu suất.
+        Sử dụng logic đơn giản như voice.py
         """
         start_time = time.time()
         results = []
@@ -162,17 +271,43 @@ class SpeechRecognizer:
                     results.append("")
                     continue
                     
-                # Optimize input format
-                audio_input = {
-                    "raw": audio_np.astype(np.float32), 
-                    "sampling_rate": 16000
-                }
+                # Tiền xử lý audio
+                input_features = self.processor(
+                    audio_np.astype(np.float32), 
+                    sampling_rate=16000, 
+                    return_tensors="pt"
+                ).input_features
                 
-                result = self.pipe(audio_input, batch_size=1, return_timestamps=False)
-                transcribed_text = result["text"] if result else ""
-                if transcribed_text.strip():
-                    print(f"Transcribed: '{transcribed_text}'")
-                results.append(transcribed_text)
+                # Chuyển sang GPU nếu có
+                if torch.cuda.is_available():
+                    input_features = input_features.cuda()
+                
+                # Tạo token ids cho tiếng Việt
+                forced_decoder_ids = self.processor.get_decoder_prompt_ids(
+                    language="vi", 
+                    task="transcribe"
+                )
+                
+                # Thực hiện transcription
+                with torch.no_grad():
+                    predicted_ids = self.model.generate(
+                        input_features,
+                        forced_decoder_ids=forced_decoder_ids,
+                        max_length=448,
+                        num_beams=5,
+                        early_stopping=True
+                    )
+                
+                # Decode kết quả
+                transcription = self.processor.batch_decode(
+                    predicted_ids, 
+                    skip_special_tokens=True
+                )[0]
+                
+                text = transcription.strip()
+                if text:
+                    print(f"Transcribed: '{text}'")
+                results.append(text)
                 
         except Exception as e:
             print(f"Batch transcription error: {e}", file=sys.stderr)
@@ -200,32 +335,18 @@ class SpeechRecognizer:
             frame_size = len(audio_chunk)
             audio_int16 = (audio_chunk * 32767).astype(np.int16)
             
-            # WebRTC VAD - giảm độ nghiêm ngặt
+            # WebRTC VAD quyết định chính + bỏ fallback siêu nhạy
             try:
                 is_speech = self.vad.is_speech(audio_int16.tobytes(), fs)
-            except:
+            except Exception:
                 is_speech = False
-            
-            # Luôn kiểm tra năng lượng để đảm bảo không bỏ sót
-            energy = np.mean(audio_chunk ** 2)
-            
-            # Ngưỡng năng lượng rất thấp để nhạy cảm hơn
-            energy_threshold = 0.00001  # Giảm từ 0.0001 xuống 0.00001
-            
-            # Nếu VAD không phát hiện, dùng năng lượng để kiểm tra
-            if not is_speech:
-                # Adaptive threshold based on recent history
-                if self.buffer:
-                    recent_energy = np.mean([np.mean(b**2) for b in self.buffer[-5:]])
-                    adaptive_threshold = max(energy_threshold, recent_energy * 0.01)  # Giảm từ 0.05 xuống 0.01
-                else:
-                    adaptive_threshold = energy_threshold
-                is_speech = energy > adaptive_threshold
-            
-            # Debug: in ra thông tin năng lượng
-            if energy > 0.0001:  # Giảm ngưỡng debug để thấy nhiều hơn
-                print(f"Energy: {energy:.6f}, VAD: {is_speech}, Threshold: {energy_threshold:.6f}")
-                
+
+            # Cập nhật ring buffer quyết định
+            self.vad_ring.append(is_speech)
+            if len(self.vad_ring) > 0:
+                votes = sum(1 for v in self.vad_ring if v)
+                is_speech = votes >= (len(self.vad_ring) // 2 + 1)
+
             return is_speech
             
         except Exception as e:
@@ -243,6 +364,13 @@ class SpeechRecognizer:
         
         # Lấy audio từ 1 kênh (mono)
         audio_chunk = indata[:, 0].copy()
+        # Nếu samplerate đầu vào khác 16k, resample về 16k cho model
+        try:
+            fs_in = getattr(self, 'current_samplerate', 16000)
+            if fs_in != 16000:
+                audio_chunk = self._resample_to_16k(audio_chunk, fs_in)
+        except Exception:
+            pass
         
         # Debug: in ra thông tin audio mỗi 100 frames
         if hasattr(self, '_frame_counter'):
@@ -271,9 +399,10 @@ class SpeechRecognizer:
             if self.silence_counter <= 10:  # Add some silence after speech
                 self.buffer.append(audio_chunk)
             
-            # Process when we have enough audio or too much silence
-            if len(self.buffer) >= 20:  # ~600ms of audio
-                print(f"Processing audio chunk: {len(self.buffer)} frames")
+            # Quy tắc gom: tối thiểu 6s, tối đa 10s, overlap 2s
+            seg_sec = len(self.buffer) * 0.03
+            if seg_sec >= self.min_segment_sec or len(self.buffer) >= int(self.max_segment_sec/0.03):
+                print(f"Processing audio segment: ~{seg_sec:.2f}s")
                 full_chunk = np.concatenate(self.buffer)
                 
                 # Combine with previous audio for context
@@ -282,19 +411,21 @@ class SpeechRecognizer:
                 else:
                     combined = full_chunk
                 
-                # Keep last part for next iteration
-                overlap_size = min(len(full_chunk), 5 * len(audio_chunk))
+                # Keep last overlap for next iteration
+                overlap_size = int(self.overlap_sec * 16000)
                 self.last_audio = full_chunk[-overlap_size:] if len(full_chunk) > overlap_size else full_chunk
                 
                 # Queue for async processing (non-blocking)
                 try:
-                    self.audio_queue.put_nowait(combined)
-                    print(f"Audio queued for processing. Queue size: {self.audio_queue.qsize()}")
+                    if len(combined) >= 16000:  # không gửi < 1s
+                        self.audio_queue.put_nowait(combined)
+                        print(f"Audio queued for processing. Queue size: {self.audio_queue.qsize()}")
                 except queue.Full:
                     # Drop oldest item if queue is full
                     try:
                         self.audio_queue.get_nowait()
-                        self.audio_queue.put_nowait(combined)
+                        if len(combined) >= 16000:
+                            self.audio_queue.put_nowait(combined)
                     except queue.Empty:
                         pass
                 
@@ -314,7 +445,7 @@ class SpeechRecognizer:
         self.stop_flag.clear()  # Reset stop flag
         
         frame_size = int(fs * frame_duration / 1000)
-        print(f"Starting optimized recording... Frame size: {frame_size} samples")
+        print(f"Starting optimized recording... Frame size (initial): {frame_size} samples @ {fs} Hz")
         print(f"Device: {'GPU' if self.device >= 0 else 'CPU'}, Workers: {self.num_workers}")
         print("Press Ctrl+C to stop recording...")
         
@@ -346,13 +477,29 @@ class SpeechRecognizer:
         # Khởi tạo audio stream
         try:
             print("Initializing audio stream...")
+            # Chọn input device an toàn trong WSL/PulseAudio
+            self.input_device = self._select_input_device()
+            if self.input_device is not None:
+                print(f"Using input device index: {self.input_device}")
+            else:
+                print("Using default input device")
+
+            # Phát hiện samplerate phù hợp theo device (Windows có thể là 44100/48000)
+            detected_fs = self._detect_samplerate()
+            self.current_samplerate = detected_fs if detected_fs else fs
+            print(f"Input samplerate: {self.current_samplerate}")
+            # Tính lại blocksize theo samplerate thực tế để có đúng 30ms frame
+            frame_size = int(self.current_samplerate * frame_duration / 1000)
+            print(f"Adjusted frame size: {frame_size} samples @ {self.current_samplerate} Hz")
+
             stream = sd.InputStream(
                 callback=self.stream_callback,
-                samplerate=fs,
+                samplerate=self.current_samplerate,
                 blocksize=frame_size,
                 channels=1,
                 dtype=np.float32,
-                latency='low'
+                latency='low',
+                device=self.input_device
             )
             
             print("Starting audio stream...")
@@ -365,7 +512,23 @@ class SpeechRecognizer:
         except KeyboardInterrupt:
             print("\nStopping recording...")
         except Exception as e:
+            # Thử fallback: không set device và/hoặc giảm latency
             print(f"Stream error: {e}", file=sys.stderr)
+            try:
+                print("Retrying audio stream with fallback parameters...")
+                stream = sd.InputStream(
+                    callback=self.stream_callback,
+                    samplerate=self.current_samplerate,
+                    blocksize=frame_size,
+                    channels=1,
+                    dtype=np.float32,
+                    # bỏ latency và device để dùng mặc định
+                )
+                stream.start()
+                while not self.stop_flag.is_set():
+                    time.sleep(0.1)
+            except Exception as e2:
+                print(f"Fallback stream error: {e2}", file=sys.stderr)
         finally:
             # Dừng stream
             try:
@@ -375,13 +538,32 @@ class SpeechRecognizer:
             except:
                 pass
             
+                         # Xử lý audio còn lại trong buffer ngay lập tức
+            if self.buffer:
+                print(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
+                full_chunk = np.concatenate(self.buffer)
+                
+                # Combine with previous audio for context
+                if len(self.last_audio) > 0:
+                    combined = np.concatenate([self.last_audio, full_chunk])
+                else:
+                    combined = full_chunk
+                
+                # Transcribe ngay lập tức nếu có đủ audio
+                if len(combined) >= 16000:  # ít nhất 1 giây
+                    try:
+                        print("Transcribing remaining audio immediately...")
+                        result = self._transcribe_batch([combined])
+                        if result and result[0].strip():
+                            self.text += result[0].strip() + " "
+                            print(f"Final transcription: {result[0]}")
+                    except Exception as e:
+                        print(f"Error transcribing final audio: {e}")
+            
             # Dừng recording và cleanup
             self._cleanup()
             
-            # Chờ một chút để xử lý các audio còn lại trong queue
-            time.sleep(1.0)
-            
-            # Thu thập các kết quả còn lại
+            # Thu thập các kết quả còn lại từ queue
             while not self.result_queue.empty():
                 try:
                     result = self.result_queue.get_nowait()
@@ -427,12 +609,32 @@ class SpeechRecognizer:
     def stop(self):
         """Stop recording and return accumulated text"""
         print("Stopping recording...")
+        
+        # Xử lý audio còn lại trong buffer ngay lập tức
+        if self.buffer:
+            print(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
+            full_chunk = np.concatenate(self.buffer)
+            
+            # Combine with previous audio for context
+            if len(self.last_audio) > 0:
+                combined = np.concatenate([self.last_audio, full_chunk])
+            else:
+                combined = full_chunk
+            
+            # Transcribe ngay lập tức nếu có đủ audio
+            if len(combined) >= 16000:  # ít nhất 1 giây
+                try:
+                    print("Transcribing remaining audio immediately...")
+                    result = self._transcribe_batch([combined])
+                    if result and result[0].strip():
+                        self.text += result[0].strip() + " "
+                        print(f"Final transcription: {result[0]}")
+                except Exception as e:
+                    print(f"Error transcribing final audio: {e}")
+        
         self._cleanup()
         
-        # Chờ một chút để xử lý các audio còn lại
-        time.sleep(1.0)
-        
-        # Thu thập các kết quả còn lại
+        # Thu thập các kết quả còn lại từ queue
         while not self.result_queue.empty():
             try:
                 result = self.result_queue.get_nowait()

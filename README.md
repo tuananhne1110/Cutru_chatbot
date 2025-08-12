@@ -25,7 +25,7 @@ Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 - **Vector Database**: Qdrant cho semantic search với 4 collections
 - **Database**: Supabase cho lưu trữ dữ liệu và lịch sử
 - **Cache**: Redis cho semantic caching và performance optimization
-- **AI Models**: AWS Bedrock (Llama 4 Scout 17B) cho LLM, Vietnamese PhoBERT cho embedding
+- **AI Models**: AWS Bedrock (Llama 4 Scout 17B) cho LLM, GreenNode Vietnamese Embedding cho embedding
 - **BGE Reranker**: Cross-encoder reranking để cải thiện chất lượng kết quả
 - **Guardrails**: 2 lớp bảo vệ với LlamaGuard
 - **Intent Detection**: Phân loại thông minh câu hỏi theo 4 loại dữ liệu
@@ -153,7 +153,7 @@ Cutru_chatbot/
 ├── 📁 services/                  # Business Logic
 │   ├── llm_service.py           # LLM integration (AWS Bedrock)
 │   ├── aws_bedrock.py           # AWS Bedrock client
-│   ├── embedding.py             # Embedding service (PhoBERT)
+│   ├── embedding.py             # Embedding service (GreenNode)
 │   ├── qdrant_service.py        # Vector search
 │   ├── reranker_service.py      # BGE reranker
 │   ├── cache_service.py         # Redis semantic cache

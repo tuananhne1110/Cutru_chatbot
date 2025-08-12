@@ -50,11 +50,7 @@ class Guardrails:
             # return {"error": str(e)}
             from pprint import pprint
             pprint("ERROR class Guardrails")
-            pprint("ERROR class Guardrails")
-            pprint("ERROR class Guardrails")
-            pprint("ERROR class Guardrails")
-            pprint("ERROR class Guardrails")
-
+            
             return {
                 "action": "NONE",
                 "outputs": str(e),

@@ -260,69 +260,82 @@ def automate_filtering(user_query, formatted_indexes, filter_prompt):
 def search_qdrant(collection_name, query_embedding, query, limit=5):
     print("###" + query + "###")
 
-    if collection_name == "procedure_chunks":
-        filter_prompt = FILTER_PROMPT_PROCEDURE
-        formatted_indexes = FORMATTED_INDEXES_PROCEDURE
-    elif collection_name == "legal_chunks":
-        filter_prompt = FILTER_PROMPT_LEGAL
-        formatted_indexes = FORMATTED_INDEXES_LEGAL
-    elif collection_name == "form_chunks":
-        filter_prompt = FILTER_PROMPT_FROM
-        formatted_indexes = FORMATTED_INDEXES_FORM
+    # Comment out filtering logic - only use vector search
+    # if collection_name == "procedure_chunks":
+    #     filter_prompt = FILTER_PROMPT_PROCEDURE
+    #     formatted_indexes = FORMATTED_INDEXES_PROCEDURE
+    # elif collection_name == "legal_chunks":
+    #     filter_prompt = FILTER_PROMPT_LEGAL
+    #     formatted_indexes = FORMATTED_INDEXES_LEGAL
+    # elif collection_name == "form_chunks":
+    #     filter_prompt = FILTER_PROMPT_FROM
+    #     formatted_indexes = FORMATTED_INDEXES_FORM
+    # elif collection_name == "template_chunks":
+    #     filter_prompt = FILTER_PROMPT_TEMPLATE
+    #     formatted_indexes = FORMATTED_INDEXES_TEMPLATE
+    # else:
+    #     return qdrant_client.search(
+    #         collection_name=collection_name,
+    #         query_vector=query_embedding,
+    #         limit=limit
+    #     ) 
 
-    elif collection_name == "template_chunks":
-        filter_prompt = FILTER_PROMPT_TEMPLATE
-        formatted_indexes = FORMATTED_INDEXES_TEMPLATE
-    else:
-        return qdrant_client.search(
-            collection_name=collection_name,
-            query_vector=query_embedding,
-            limit=limit
-        ) 
-
-    filter_condition = automate_filtering(user_query=query, formatted_indexes=formatted_indexes, filter_prompt=filter_prompt)
+    # filter_condition = automate_filtering(user_query=query, formatted_indexes=formatted_indexes, filter_prompt=filter_prompt)
     
-    print("*###" + "_"*50 + "###*")
-    print(filter_condition)
-    print("###" + "_"*50 + "###")
+    # print("*###" + "_"*50 + "###*")
+    # print(filter_condition)
+    # print("###" + "_"*50 + "###")
     
-    # Nếu automate_filtering thất bại, fallback về vector search ngay
-    if filter_condition is None:
-        print("automate_filtering failed, falling back to vector search")
-        return qdrant_client.search(
-            collection_name=collection_name,
-            query_vector=query_embedding,
-            limit=limit,
-            with_payload=True
-        ), None
+    # # Nếu automate_filtering thất bại, fallback về vector search ngay
+    # if filter_condition is None:
+    #     print("automate_filtering failed, falling back to vector search")
+    #     return qdrant_client.search(
+    #         collection_name=collection_name,
+    #         query_vector=query_embedding,
+    #         limit=limit,
+    #         with_payload=True
+    #     ), None
 
+    # try:
+    #     filter_result = qdrant_client.query_points(
+    #         collection_name=collection_name,
+    #         query=query_embedding,
+    #         query_filter=filter_condition,
+    #         limit=limit,
+    #         with_payload=True,
+    #         with_vectors=False
+    #     ).points
+
+    #     # Nếu có filter nhưng không có kết quả, fallback về vector search 
+    #     if filter_condition is not None and len(filter_result) == 0:
+    #         print(f"Filter returned {len(filter_result)} results, falling back to vector search")
+    #         vector_search_results = qdrant_client.search(
+    #             collection_name=collection_name,
+    #             query_vector=query_embedding,
+    #             limit=limit,
+    #             with_payload=True
+    #         )
+    #         if hasattr(vector_search_results, 'points'):
+    #             return vector_search_results.points, filter_condition
+    #         else:
+    #             return vector_search_results, filter_condition
+    #     else:
+    #         return filter_result, filter_condition
+
+    # except Exception as e:
+    #     vector_search_results = qdrant_client.search(
+    #         collection_name=collection_name,
+    #         query_vector=query_embedding,
+    #         limit=limit,
+    #         with_payload=True
+    #     )
+    #     if hasattr(vector_search_results, 'points'):
+    #         return vector_search_results.points, filter_condition
+    #     else:
+    #         return vector_search_results, filter_condition
+
+    # Simplified: Only use vector search without filtering - similar to vector retriever
     try:
-        filter_result = qdrant_client.query_points(
-            collection_name=collection_name,
-            query=query_embedding,
-            query_filter=filter_condition,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False
-        ).points
-
-        # Nếu có filter nhưng không có kết quả, fallback về vector search 
-        if filter_condition is not None and len(filter_result) == 0:
-            print(f"Filter returned {len(filter_result)} results, falling back to vector search")
-            vector_search_results = qdrant_client.search(
-                collection_name=collection_name,
-                query_vector=query_embedding,
-                limit=limit,
-                with_payload=True
-            )
-            if hasattr(vector_search_results, 'points'):
-                return vector_search_results.points, filter_condition
-            else:
-                return vector_search_results, filter_condition
-        else:
-            return filter_result, filter_condition
-
-    except Exception as e:
         vector_search_results = qdrant_client.search(
             collection_name=collection_name,
             query_vector=query_embedding,
@@ -330,9 +343,12 @@ def search_qdrant(collection_name, query_embedding, query, limit=5):
             with_payload=True
         )
         if hasattr(vector_search_results, 'points'):
-            return vector_search_results.points, filter_condition
+            return vector_search_results.points
         else:
-            return vector_search_results, filter_condition
+            return vector_search_results
+    except Exception as e:
+        print(f"Error in vector search: {e}")
+        return []
 
 
 # Đã bỏ hàm search_qdrant_by_parent_id vì không còn parent_id trong cấu trúc dữ liệu mới

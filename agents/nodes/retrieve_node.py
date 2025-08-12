@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from agents.utils.intent_detector import intent_detector, IntentType
 from agents.state import ChatState
 from services.embedding import get_embedding
-from services.qdrant_service import search_qdrant, search_qdrant_by_id
+from services.qdrant_service import search_qdrant
 from services.reranker_service import get_reranker
 from langfuse.decorators import observe
 
@@ -99,24 +99,12 @@ async def retrieve_context(state: ChatState) -> ChatState:
                 search_limit = 6   # Nếu nhiều collections thì lấy ít nhất
             search_result = await loop.run_in_executor(None, search_qdrant, collection, embedding, query, search_limit)
             
-            # search_qdrant returns (results, filter_condition)
-            if isinstance(search_result, tuple):
-                results, filter_condition = search_result
-            else:
-                results = search_result
-                filter_condition = None
+            # search_qdrant now returns results directly (similar to vector retriever)
+            results = search_result
             
-            # Áp dụng threshold score để lọc bỏ kết quả có độ liên quan thấp
-            filtered_results = []
+            logger.info(f"[Retrieve] Found {len(results)} docs in {collection}")
+            
             for r in results:
-                score = getattr(r, 'score', 0.0)
-                # Chỉ lấy kết quả có score >= 0.7 (có thể điều chỉnh)
-                if score >= 0.65:
-                    filtered_results.append(r)
-            
-            logger.info(f"[Retrieve] Found {len(results)} docs, filtered to {len(filtered_results)} docs with score >= 0.65 in {collection}")
-            
-            for r in filtered_results:
                 if hasattr(r, 'payload') and r.payload:
                     content = r.payload.get("content") or r.payload.get("text", "")
                     # Thêm vector score vào metadata để tracking
@@ -161,6 +149,3 @@ async def retrieve_context(state: ChatState) -> ChatState:
     state["processing_time"]["context_retrieval"] = duration
     logger.info(f"[Retrieve] Retrieval time: {duration:.4f}s")
     return state
-
-# Đã bỏ các hàm _expand_law_chunks_with_structure và _group_law_chunks_tree 
-# vì cấu trúc dữ liệu luật mới chỉ có Chương và Điều, không còn parent_id 

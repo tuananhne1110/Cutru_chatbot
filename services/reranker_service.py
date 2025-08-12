@@ -3,18 +3,19 @@ import time
 from typing import Dict, List
 
 import torch
-from sentence_transformers import CrossEncoder
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 logger = logging.getLogger(__name__)
 
 class BGEReranker:
-    """Reranker sử dụng BGE CrossEncoder để cải thiện chất lượng kết quả."""
+    """Reranker sử dụng BGE transformers để tính điểm query-doc, khớp với logic bạn yêu cầu."""
     
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
         """Khởi tạo BGE reranker."""
         self.model_name = model_name
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = None
+        self.tokenizer = None
         self._load_model()
     
     def _load_model(self):
@@ -23,11 +24,10 @@ class BGEReranker:
             logger.info(f"Loading BGE reranker model: {self.model_name}")
             start_time = time.time()
             
-            self.model = CrossEncoder(
-                model_name_or_path=self.model_name,
-                device=self.device,
-                max_length=512
-            )
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
+            self.model.to(self.device)
+            self.model.eval()
             
             load_time = time.time() - start_time
             logger.info(f"BGE reranker loaded successfully in {load_time:.2f}s on {self.device}")
@@ -53,23 +53,28 @@ class BGEReranker:
             start_time = time.time()
             
             pairs = []
+            contents = []
             for doc in documents:
                 content = doc.get('content', doc.get('text', ''))
-                if content:
-                    pairs.append([query, content])
-                else:
-                    metadata_str = self._extract_metadata_str(doc)
-                    pairs.append([query, metadata_str])
-            
-            scores = self.model.predict(
-                pairs, 
-                batch_size=batch_size,
-                show_progress_bar=False
-            )
+                contents.append(content)
+                pairs.append([query, content])
+
+            inputs = self.tokenizer(
+                pairs,
+                padding=True,
+                truncation=True,
+                return_tensors='pt',
+                max_length=512
+            ).to(self.device)
+
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                scores = outputs.logits.view(-1).float().cpu().numpy()
             
             scored_docs = []
-            for i, (doc, score) in enumerate(zip(documents, scores)):
+            for i, (doc, score, content) in enumerate(zip(documents, scores, contents)):
                 doc_copy = doc.copy()
+                doc_copy['content'] = content
                 doc_copy['rerank_score'] = float(score)
                 doc_copy['original_rank'] = i
                 scored_docs.append(doc_copy)
