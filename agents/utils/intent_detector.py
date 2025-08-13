@@ -7,7 +7,7 @@ from enum import Enum
 import boto3
 from langfuse.decorators import observe
 import yaml
-# from .prompt_templates import prompt_templates, CategoryType
+from agents.prompt.prompt_templates import prompt_templates
 
 logger = logging.getLogger(__name__)
 
@@ -49,29 +49,11 @@ MAPPING_IntentType = {
 
 }
 
-ROUTER_SYSTEM_PROMPT = """
-Bạn là một trợ lý thông minh có khả năng định tuyến truy vấn người dùng đến MỘT hoặc NHIỀU cơ sở dữ liệu chuyên biệt.
-Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
-1. **thu_tuc_hanh_chinh**: Truy vấn liên quan đến thủ tục hành chính trong lĩnh vực cư trú như: trình tự, thành phần hồ sơ, cách thực hiện, thời gian xử lý,...
-2. **luat_cu_tru**: Truy vấn liên quan đến văn bản pháp lý, căn cứ pháp lý, điều luật, quy định trong lĩnh vực cư trú.
-3. **giay_to_cu_tru**: Truy vấn liên quan đến giấy tờ, biểu mẫu, tờ khai, đơn, phiếu đề nghị,... dùng trong lĩnh vực cư trú.
-4. **thuat_ngu_cu_tru**: Truy vấn cần định nghĩa, giải thích các thuật ngữ, khái niệm chuyên ngành liên quan đến cư trú.
-6. **giao_tiep_chung**: Truy vấn không liên quan đến cư trú, bao gồm các câu hỏi chào hỏi, cảm ơn, hỏi vu vơ, giới thiệu bản thân,... hoặc những nội dung giao tiếp hàng ngày.
-## Chú ý: 
-    - Với mỗi truy vấn, bạn **cần liệt kê đầy đủ tất cả các cơ sở dữ liệu liên quan**, không bỏ sót (có thể từ 1 đến nhiều).
-    - Nếu truy vấn thuộc về nhiều lĩnh vực cùng lúc, trả về nhiều cơ sở dữ liệu.
-"""
+# Router system prompt sẽ được lấy từ prompt_templates
 
-def load_intent_config(yaml_path="config/config.yaml"):
-    try:
-        with open(yaml_path, 'r') as f:
-            config = yaml.safe_load(f)
-            return config.get("intent", {})
-    except Exception:
-        return {}
+from config.settings import settings
 
-intent_cfg = load_intent_config()
-ROUTER_SYSTEM_PROMPT = intent_cfg.get("router_system_prompt", ROUTER_SYSTEM_PROMPT)
+intent_cfg = settings.intent_config
 KEYWORDS = intent_cfg.get("keywords", {})
 
 
@@ -177,10 +159,13 @@ class IntentDetector:
         
         try:
             logger.info(f"[IntentDetector] Calling Bedrock with model: {self.model_id}")
+            # Lấy router system prompt từ prompt_templates
+            router_prompt = prompt_templates.get_intent_router_prompt().format(question=query)
+            
             response = self.bedrock_runtime_client.converse(
                 modelId=self.model_id,
                 messages=messages,
-                system=[{"text": ROUTER_SYSTEM_PROMPT}],
+                system=[{"text": router_prompt}],
                 toolConfig=tool_config
             )
 

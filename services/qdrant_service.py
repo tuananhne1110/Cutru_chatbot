@@ -7,21 +7,33 @@ from instructor import Mode, from_bedrock
 from pydantic import BaseModel
 from qdrant_client.models import Condition, Filter
 
-from config.app_config import qdrant_client
+from config import settings
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _setup_llm_client():
-    bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
+    bedrock_runtime = boto3.client("bedrock-runtime", region_name=settings.models.aws_bedrock.llm_model_configs['llama'].region_name)
     return from_bedrock(
         client=bedrock_runtime,
-        model="us.meta.llama4-scout-17b-instruct-v1:0",
+        model=settings.models.aws_bedrock.llm_model_configs['llama'].model_id,
         mode=Mode.BEDROCK_JSON,
     )
 
 llm_client = _setup_llm_client()
+
+# Setup Qdrant client from settings
+def _setup_qdrant_client():
+    from qdrant_client import QdrantClient
+    
+    qdrant_config = settings.retrieval_settings.qdrant_config
+    if qdrant_config.qdrant_url:
+        return QdrantClient(url=qdrant_config.qdrant_url, api_key=qdrant_config.qdrant_api_key)
+    else:
+        return QdrantClient(host=qdrant_config.qdrant_host, port=qdrant_config.qdrant_port)
+
+qdrant_client = _setup_qdrant_client()
 
 class QdrantFilterWrapper(BaseModel):
     must: list[Condition] = []

@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from typing import cast
 from fastapi.responses import StreamingResponse
 import json
-from config.app_config import langsmith_cfg
+from config.settings import settings
 import os
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,10 @@ async def langgraph_chat(request: ChatRequest):
         config_dict = {"configurable": {"thread_id": session_id}}
         
         # Add LangSmith tags and metadata if tracing is enabled
-        if langsmith_cfg.get("tracing_enabled", False):
-            config_dict["tags"] = langsmith_cfg.get("tags", [])
+        if settings.langsmith_config.get("tracing_enabled", False):
+            config_dict["tags"] = settings.langsmith_config.get("tags", [])
             config_dict["metadata"] = {
-                **langsmith_cfg.get("metadata", {}),
+                **settings.langsmith_config.get("metadata", {}),
                 "session_id": session_id,
                 "endpoint": "/chat",
                 "timestamp": datetime.now().isoformat(),
@@ -78,10 +78,10 @@ async def langgraph_chat_stream(request: ChatRequest):
         config_dict = {"configurable": {"thread_id": session_id}}
         
         # Add LangSmith tags and metadata if tracing is enabled
-        if langsmith_cfg.get("tracing_enabled", False):
-            config_dict["tags"] = langsmith_cfg.get("tags", []) + ["streaming"]
+        if settings.langsmith_config.get("tracing_enabled", False):
+            config_dict["tags"] = settings.langsmith_config.get("tags", []) + ["streaming"]
             config_dict["metadata"] = {
-                **langsmith_cfg.get("metadata", {}),
+                **settings.langsmith_config.get("metadata", {}),
                 "session_id": session_id,
                 "endpoint": "/chat/stream",
                 "timestamp": datetime.now().isoformat(),

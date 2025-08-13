@@ -3,7 +3,7 @@ import asyncio
 import logging
 import traceback
 from agents.state import ChatState
-from agents.prompt.prompt_manager import prompt_manager
+from agents.prompt.prompt_templates import prompt_templates
 from langchain_core.messages import AIMessage
 from langfuse.decorators import observe, langfuse_context
 import boto3
@@ -13,14 +13,9 @@ from agents.utils.intent_detector import IntentType
 logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-1")
 
-def load_llm_config(yaml_path="config/config.yaml"):
-    try:
-        with open(yaml_path, 'r') as f:
-            config = yaml.safe_load(f)
-            return config.get("llm", {})
-    except Exception:
-        return {}
-llm_cfg = load_llm_config()
+from config.settings import settings
+
+llm_cfg = settings.llm_config
 prompt_version = llm_cfg.get("prompt_version", "v1")
 model_name = llm_cfg.get("default_model_name", "us.meta.llama4-scout-17b-instruct-v1:0")
 
@@ -107,7 +102,7 @@ async def generate_answer(state: ChatState) -> ChatState:
 
         return state
     loop = asyncio.get_running_loop()
-    # Format docs để phù hợp với prompt_manager
+    # Format docs để phù hợp với prompt_templates
     formatted_docs = []
     for doc in docs:
         doc_dict = {
@@ -117,11 +112,15 @@ async def generate_answer(state: ChatState) -> ChatState:
         }
         formatted_docs.append(doc_dict)
     
-    prompt = prompt_manager.create_dynamic_prompt(
-        question,
-        formatted_docs
+    # Tạo prompt trực tiếp từ prompt_templates
+    prompt_template = prompt_templates.get_prompt_by_category()
+    formatted_context = prompt_templates.format_context_by_category(formatted_docs)
+    prompt = prompt_template.format(
+        context=formatted_context,
+        question=question
     )
-    system_prompt = prompt_manager.prompt_templates.base_template
+    
+    system_prompt = prompt_templates.get_prompt_by_category()
     state["prompt"] = prompt
     logger.info(f"[Langfuse] Logging input/model/metadata: input={prompt}, model={model_name}")
     

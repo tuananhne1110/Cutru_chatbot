@@ -72,10 +72,9 @@ function Message({ message, showSources, toggleSources }) {
                         {source.law_name && (
                           <>
                         <div className="font-medium">{source.law_name}</div>
-                        {source.article && <div>{source.article}</div>}
+                        {source.law_code && <div>Mã: {source.law_code}</div>}
                         {source.chapter && <div>Chương: {source.chapter}</div>}
-                        {source.clause && <div>Khoản: {source.clause}</div>}
-                        {source.point && <div>Điểm: {source.point}</div>}
+                        {source.chapter_content && <div>Nội dung chương: {source.chapter_content}</div>}
                           </>
                         )}
                         {/* Nếu là nguồn biểu mẫu */}

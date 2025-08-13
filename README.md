@@ -54,7 +54,7 @@ Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 - **Collection**: `legal_chunks`
 - **Table**: `laws`
 - **Content**: Văn bản luật, nghị định, thông tư, quyết định
-- **Metadata**: law_code, law_name, promulgator, promulgation_date, effective_date, law_type, article, chapter, clause, point
+- **Metadata**: law_code, law_name, promulgator, promulgation_date, effective_date, law_type, chapter, chapter_content, content
 
 ### 2. 📋 **Forms (Biểu mẫu)**
 - **File**: `chunking/output_json/form_chunks.json`
@@ -109,7 +109,6 @@ Cutru_chatbot/
 ├── 📁 agents/                    # AI Agents & Intelligence
 │   ├── intent_detector.py       # Phân loại intent thông minh
 │   ├── prompt_templates.py      # Prompt templates chuyên biệt
-│   ├── prompt_manager.py        # Quản lý prompt động
 │   ├── guardrails.py            # 2 lớp bảo vệ an toàn
 │   ├── query_rewriter.py        # Làm sạch & tối ưu câu hỏi
 │   ├── context_manager.py       # Quản lý context hội thoại
@@ -230,10 +229,11 @@ AMBIGUOUS → all collections with weights
 - Xử lý ngôn ngữ tự nhiên tiếng Việt
 - Rule-based cleaning + LLM paraphrase
 
-### 5. 📋 **Prompt Manager** (`agents/prompt_manager.py`)
-- Dynamic prompt generation theo intent
-- Context formatting chuyên biệt
-- Multi-category handling
+### 5. 📝 **Prompt Templates** (`agents/prompt_templates.py`)
+- Prompt templates chuyên biệt cho từng category
+- Intent router prompt cho việc định tuyến
+- Context formatting theo category
+- Dynamic prompt generation
 
 ### 6. ⭐ **BGE Reranker** (`services/reranker_service.py`)
 - Cross-encoder reranking với BAAI/bge-reranker-v2-m3

@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 from langchain_core.documents import Document
 from agents.utils.intent_detector import intent_detector, IntentType
 from agents.state import ChatState
-from services.embedding import get_embedding
+from embeddings import get_embedding
 from services.qdrant_service import search_qdrant
 from services.reranker_service import get_reranker
 from langfuse.decorators import observe
