@@ -145,6 +145,7 @@ async def get_current_text():
 async def get_model_info():
     """Lấy thông tin về voice model configuration"""
     try:
+        voice_config = settings.voice_config
         return {
                     "model_info": {
             "model_name": voice_config.model_name if voice_config else "vinai/PhoWhisper-medium",
