@@ -79,3 +79,19 @@ if SUPABASE_URL and SUPABASE_KEY:
         supabase = None
 else:
     print("Supabase URL or KEY not found in environment variables") 
+
+# Graph RAG initialization
+try:
+    from services.graph_rag_init import initialize_graph_rag, get_graph_rag_service
+    
+    # Initialize Graph RAG system
+    graph_rag_initialized = initialize_graph_rag()
+    if graph_rag_initialized:
+        print("Graph RAG system initialized successfully")
+        graph_rag_service = get_graph_rag_service()
+    else:
+        print("Graph RAG initialization failed, falling back to vector RAG only")
+        graph_rag_service = None
+except Exception as e:
+    print(f"Graph RAG initialization error: {e}")
+    graph_rag_service = None
