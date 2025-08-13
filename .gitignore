@@ -149,7 +149,6 @@ qdrant_storage/
 *.onnx
 
 # Vector embeddings
-embeddings/
 *.npy
 *.npz
 
