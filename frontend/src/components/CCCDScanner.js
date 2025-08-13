@@ -1,44 +1,78 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 function CCCDScanner({ onScanned, onChatMessage }) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  const eventSourceRef = useRef(null);
 
-  const startScan = async () => {
-    setIsScanning(true);
-    
+  // Đảm bảo đóng stream khi unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
+  const closeStream = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  };
+
+  const fetchValidatedData = async () => {
     try {
-      // Simulate scanning process
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // TODO: Implement real CCCD scanning
-      // For now, return empty data - user will need to manually enter
-      const emptyCCCDData = {
-        idCode: '',
-        oldIdCode: '',
-        personName: '',
-        dateOfBirth: '',
-        gender: '',
-        nationality: 'Việt Nam',
-        race: '',
-        religion: '',
-        originPlace: '',
-        residencePlace: '',
-        personalIdentification: '',
-        issueDate: '',
-        expiryDate: '',
-        wifeName: '',
-        fatherName: '',
-        motherName: '',
-        qr: ''
-      };
-      
-      setScanResult(emptyCCCDData);
-      onScanned(emptyCCCDData);
-    } catch (error) {
-      console.error('Scanning error:', error);
+      const res = await fetch(`/reader/data`);
+      if (!res.ok) {
+        throw new Error(`Backend trả ${res.status}`);
+      }
+      const data = await res.json();
+      setScanResult(data);
+      onScanned?.(data);
+    } catch (err) {
+      console.error('Lấy dữ liệu CCCD lỗi:', err);
+      onChatMessage?.('Không lấy được dữ liệu hợp lệ từ đầu đọc.');
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const startScan = async () => {
+    closeStream();
+    setIsScanning(true);
+
+    try {
+      // Khởi động socket client ở backend
+      await fetch(`/reader`, { method: 'POST' }).catch(() => { });
+
+      // Mở SSE tới /reader/validate
+      const es = new EventSource(`/reader/validate`);
+      eventSourceRef.current = es;
+
+      es.addEventListener('status', (evt) => {
+        try {
+          const payload = JSON.parse(evt.data);
+          if (payload.validated) {
+            closeStream();
+            fetchValidatedData();
+          }
+        } catch (e) {
+          console.error('Parse SSE payload lỗi:', e);
+        }
+      });
+
+      es.onerror = (e) => {
+        console.warn('SSE lỗi/đứt kết nối:', e);
+        closeStream();
+        setIsScanning(false);
+        onChatMessage?.('Kết nối stream bị gián đoạn.');
+      };
+    } catch (error) {
+      console.error('Lỗi khởi động quét:', error);
+      setIsScanning(false);
+      onChatMessage?.('Không thể bắt đầu quét thẻ. Vui lòng thử lại.');
     }
   };
 
@@ -49,13 +83,8 @@ function CCCDScanner({ onScanned, onChatMessage }) {
     input.onchange = async (e) => {
       if (e.target.files[0]) {
         setIsScanning(true);
-        
         try {
-          // Simulate file processing
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // TODO: Implement real file parsing
-          // For now, return empty data - user will need to manually enter
+          await new Promise((r) => setTimeout(r, 1000));
           const emptyCCCDData = {
             idCode: '',
             oldIdCode: '',
@@ -73,11 +102,10 @@ function CCCDScanner({ onScanned, onChatMessage }) {
             wifeName: '',
             fatherName: '',
             motherName: '',
-            qr: ''
+            qr: '',
           };
-          
           setScanResult(emptyCCCDData);
-          onScanned(emptyCCCDData);
+          onScanned?.(emptyCCCDData);
         } catch (error) {
           console.error('File processing error:', error);
         } finally {
@@ -134,10 +162,10 @@ function CCCDScanner({ onScanned, onChatMessage }) {
             <span className="text-2xl mr-3">✅</span>
             <div>
               <h5 className="text-green-800 font-semibold">Quét thành công!</h5>
-              <span className="text-green-600 text-sm">17 trường dữ liệu</span>
+              <span className="text-green-600 text-sm">Dữ liệu từ đầu đọc</span>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="bg-white p-3 rounded border">
               <div className="text-sm font-medium text-gray-600">Số định danh</div>
@@ -170,4 +198,4 @@ function CCCDScanner({ onScanned, onChatMessage }) {
   );
 }
 
-export default CCCDScanner; 
+export default CCCDScanner;
