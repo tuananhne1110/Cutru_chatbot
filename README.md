@@ -45,6 +45,7 @@ Legal Assistant là một hệ thống AI hoàn chỉnh bao gồm:
 - ✅ **Multi-collection Search**: Tìm kiếm thông minh theo intent
 - ✅ **Semantic Caching**: Redis-based caching cho performance
 - ✅ **Docker Deployment**: Triển khai dễ dàng với Docker Compose
+- ✅ **LangSmith Monitoring**: Tracing và visualization toàn diện
 
 ## 📊 4 Loại Dữ Liệu Chính
 
@@ -495,17 +496,44 @@ http://localhost:8000
 
 ## 📊 Monitoring & Logging
 
-### 🔍 Langfuse Integration
-- **Performance tracking**: Thời gian xử lý từng bước
-- **Error monitoring**: Theo dõi lỗi và exceptions
-- **User analytics**: Phân tích hành vi người dùng
-- **Model performance**: Đánh giá chất lượng LLM
+### 🎯 LangSmith Integration
+**Hệ thống monitoring và tracing toàn diện cho LangGraph workflow:**
+
+- **🔄 Workflow Visualization**: Xem flow qua các nodes trong real-time
+- **⚡ Performance Tracking**: Thời gian xử lý từng bước và tổng thể  
+- **🐛 Error Monitoring**: Theo dõi lỗi và exceptions với stack trace
+- **👤 User Analytics**: Phân tích hành vi và session người dùng
+- **🤖 Model Performance**: Đánh giá chất lượng LLM và retrieval
+- **🏷️ Smart Tagging**: Tags theo intent, environment, version
+- **📊 Custom Metrics**: Cache hit rate, intent accuracy, response quality
+
+**Setup nhanh:**
+```bash
+# 1. Auto setup 
+python scripts/setup_langsmith.py
+
+# 2. Test integration
+python scripts/test_langsmith.py
+
+# 3. View dashboard
+https://smith.langchain.com/
+```
 
 ### 📈 Metrics Dashboard
-- **Response time**: Thời gian phản hồi trung bình
-- **Cache hit rate**: Tỷ lệ cache hit
-- **Intent distribution**: Phân bố loại câu hỏi
-- **Error rate**: Tỷ lệ lỗi
+- **Workflow Performance**: Visualization của toàn bộ RAG pipeline
+- **Node-level Metrics**: Thời gian và accuracy của từng step
+- **Response Quality**: User feedback và validation scores  
+- **Cache Efficiency**: Hit rate và performance improvement
+- **Intent Distribution**: Phân bố và accuracy của intent detection
+- **Error Analysis**: Categorized errors với debugging info
+- **User Patterns**: Session analysis và behavior insights
+
+### 🔍 Debugging Features
+- **Trace Explorer**: Chi tiết từng request qua workflow
+- **Node Inspector**: Input/output của mỗi processing step
+- **Error Root Cause**: Trace backward để tìm nguyên nhân
+- **Performance Bottlenecks**: Identify slow nodes và optimize
+- **A/B Testing**: Compare different prompts và configurations
 
 ## ❌ Troubleshooting
 

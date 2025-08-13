@@ -1,0 +1,28 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	set_intent(set_intent)
+	semantic_cache(semantic_cache)
+	guardrails_input(guardrails_input)
+	rewrite(rewrite)
+	retrieve(retrieve)
+	generate(generate)
+	validate(validate)
+	update_memory(update_memory)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> guardrails_input;
+	generate --> validate;
+	guardrails_input --> set_intent;
+	retrieve --> generate;
+	rewrite --> retrieve;
+	semantic_cache --> rewrite;
+	set_intent --> semantic_cache;
+	validate --> update_memory;
+	update_memory --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -10,6 +10,8 @@ from langchain_core.runnables import RunnableConfig
 from typing import cast
 from fastapi.responses import StreamingResponse
 import json
+from config.app_config import langsmith_cfg
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +24,35 @@ async def langgraph_chat(request: ChatRequest):
         session_id = request.session_id or str(uuid.uuid4())
         messages = request.messages or []
         question = request.question
+        
         # Build initial state for LangGraph
         initial_state: ChatState = create_initial_state(question, messages, session_id)
-        # Use cast to satisfy Pyright for config type
-        config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
+        
+        # Prepare config with LangSmith metadata
+        config_dict = {"configurable": {"thread_id": session_id}}
+        
+        # Add LangSmith tags and metadata if tracing is enabled
+        if langsmith_cfg.get("tracing_enabled", False):
+            config_dict["tags"] = langsmith_cfg.get("tags", [])
+            config_dict["metadata"] = {
+                **langsmith_cfg.get("metadata", {}),
+                "session_id": session_id,
+                "endpoint": "/chat",
+                "timestamp": datetime.now().isoformat(),
+                "question_length": len(question) if question else 0,
+                "message_count": len(messages)
+            }
+        
+        config = cast(RunnableConfig, config_dict)
+        
         # Run LangGraph workflow
         result = await rag_workflow.ainvoke(initial_state, config=config)
+        
         # Extract results
         results = extract_results_from_state(result)
         answer = results["answer"]
         sources = results["sources"]
+        
         return ChatResponse(
             answer=answer,
             sources=[Source(**src) for src in sources],
@@ -52,7 +73,25 @@ async def langgraph_chat_stream(request: ChatRequest):
         messages = request.messages or []
         question = request.question
         initial_state: ChatState = create_initial_state(question, messages, session_id)
-        config = cast(RunnableConfig, {"configurable": {"thread_id": session_id}})
+        
+        # Prepare config with LangSmith metadata
+        config_dict = {"configurable": {"thread_id": session_id}}
+        
+        # Add LangSmith tags and metadata if tracing is enabled
+        if langsmith_cfg.get("tracing_enabled", False):
+            config_dict["tags"] = langsmith_cfg.get("tags", []) + ["streaming"]
+            config_dict["metadata"] = {
+                **langsmith_cfg.get("metadata", {}),
+                "session_id": session_id,
+                "endpoint": "/chat/stream",
+                "timestamp": datetime.now().isoformat(),
+                "question_length": len(question) if question else 0,
+                "message_count": len(messages),
+                "streaming": True
+            }
+        
+        config = cast(RunnableConfig, config_dict)
+        
         # Run workflow to get result
         result = await rag_workflow.ainvoke(initial_state, config=config)
         

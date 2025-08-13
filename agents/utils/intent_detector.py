@@ -64,7 +64,7 @@ Hiện có 6 cơ sở dữ liệu mà bạn có thể sử dụng:
 
 def load_intent_config(yaml_path="config/config.yaml"):
     try:
-        with open(yaml_path, 'r') as f:
+        with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
             config = yaml.safe_load(f)
             return config.get("intent", {})
     except Exception:
@@ -169,10 +169,14 @@ class IntentDetector:
     
     @observe()
     def detect_intent(self, query: str, trace_id: str = None) -> List[Tuple[IntentType, str]]:
+        logger.info(f"[IntentDetector] Processing query: '{query}'")
+        
         messages = [{"role": "user", "content": [{"text": query}]}]
         tool_config = {"tools": [tool.to_dict() for tool in TOOL_CONFIGS]}
         list_intent_type: List[Tuple[IntentType, str]] = []
+        
         try:
+            logger.info(f"[IntentDetector] Calling Bedrock with model: {self.model_id}")
             response = self.bedrock_runtime_client.converse(
                 modelId=self.model_id,
                 messages=messages,
@@ -181,31 +185,43 @@ class IntentDetector:
             )
 
             output = response["output"]["message"]["content"]
-            print(response)
-            for item in output:
+            logger.info(f"[IntentDetector] Raw Bedrock response: {response}")
+            logger.info(f"[IntentDetector] Extracted output content: {output}")
+            for i, item in enumerate(output):
+                logger.info(f"[IntentDetector] Processing output item {i}: {item}")
+                
                 # Trường hợp toolUse (định tuyến trực tiếp)
                 if "toolUse" in item:
                     tool_name = item['toolUse']['name']
                     new_query = item['toolUse']['input'].get('query', query)
                     intent = MAPPING_IntentType.get(tool_name, IntentType.GENERAL)
+                    logger.info(f"[IntentDetector] Found toolUse - tool_name: {tool_name}, intent: {intent}, query: '{new_query}'")
                     list_intent_type.append((intent, new_query))
                     continue
 
                 # Trường hợp trả về dưới dạng text (có thể là JSON)
                 if "text" in item and isinstance(item["text"], str):
+                    logger.info(f"[IntentDetector] Found text response: {item['text']}")
                     try:
                         tool_results = TextUtils.decode_text_json(item["text"])
+                        logger.info(f"[IntentDetector] Decoded JSON tool results: {tool_results}")
                         for tool_result in tool_results:
                             new_query = tool_result['parameters'].get('query', query)
                             tool_name = tool_result.get('name')
                             intent = MAPPING_IntentType.get(tool_name, IntentType.GENERAL)
+                            logger.info(f"[IntentDetector] From JSON - tool_name: {tool_name}, intent: {intent}, query: '{new_query}'")
                             list_intent_type.append((intent, new_query))
-                    except (json.JSONDecodeError, KeyError, TypeError):
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        logger.warning(f"[IntentDetector] Failed to parse JSON response: {e}")
                         list_intent_type.append((IntentType.GENERAL, query))
                 else:
+                    logger.info(f"[IntentDetector] Unknown item format, defaulting to GENERAL")
                     list_intent_type.append((IntentType.GENERAL, query))
         except Exception as e:
+            logger.error(f"[IntentDetector] Error during intent detection: {e}")
             return [(IntentType.GENERAL, query)]
+
+        logger.info(f"[IntentDetector] Raw detected intents: {list_intent_type}")
 
         # Loại trùng intent (theo loại intent, giữ lại query đầu tiên cho mỗi intent)
         seen = set()
@@ -215,31 +231,45 @@ class IntentDetector:
                 unique_intents.append((intent, q))
                 seen.add(intent)
 
+        logger.info(f"[IntentDetector] After deduplication: {unique_intents}")
+
         # Nếu có PROCEDURE thì tự động thêm LAW và FORM nếu chưa có
         has_procedure = any(intent == IntentType.PROCEDURE for intent, _ in unique_intents)
         if has_procedure:
+            logger.info(f"[IntentDetector] PROCEDURE intent detected, checking for auto-add LAW and FORM")
             for extra_intent in [IntentType.LAW, IntentType.FORM]:
                 if not any(intent == extra_intent for intent, _ in unique_intents):
+                    logger.info(f"[IntentDetector] Auto-adding {extra_intent} intent")
                     unique_intents.append((extra_intent, query))
 
+        logger.info(f"[IntentDetector] Final result: {unique_intents}")
         return unique_intents
 
 
     def get_search_collections(self, intents: List[Tuple[IntentType, str]]) -> List[str]:
+        logger.info(f"[IntentDetector] Converting intents to collections: {intents}")
+        
         list_collections = []
         for intent in intents:
-            if intent[0] == IntentType.LAW:
-                list_collections.append("legal_chunks")
-            elif intent[0] == IntentType.FORM:
-                list_collections.append("form_chunks")
-            elif intent[0] == IntentType.TERM:
-                list_collections.append("term_chunks")
-            elif intent[0] == IntentType.PROCEDURE:
-                list_collections.append("procedure_chunks")
-            elif intent[0] == IntentType.TEMPLATE:
-                list_collections.append("template_chunks")
-            else :
-                list_collections.append("general_chunks")
+            intent_type = intent[0]
+            if intent_type == IntentType.LAW:
+                collection = "legal"
+            elif intent_type == IntentType.FORM:
+                collection = "procedure"
+            elif intent_type == IntentType.TERM:
+                collection = "legal"  # Chuyển term search sang legal
+                logger.info(f"[IntentDetector] TERM intent mapped to legal (term removed)")
+            elif intent_type == IntentType.PROCEDURE:
+                collection = "procedure"
+            elif intent_type == IntentType.TEMPLATE:
+                collection = "procedure"
+            else:
+                collection = "general"
+            
+            logger.info(f"[IntentDetector] Intent {intent_type} → Collection {collection}")
+            list_collections.append(collection)
+        
+        logger.info(f"[IntentDetector] Final collections list: {list_collections}")
         return list_collections
 
 

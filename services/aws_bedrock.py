@@ -1,17 +1,17 @@
-import boto3
-import logging
 import json
-from typing import Dict, List, Optional, Union, Any
+import logging
+import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from botocore.exceptions import BotoCoreError, ClientError
 from functools import wraps
-from abc import ABC, abstractmethod
-import time
+from typing import Any, Dict, List, Optional, Union
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import yaml
 
 class ModelVersion(Enum):
-    # Claude Models
     CLAUDE_3_5_SONNET_V1 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     LLAMA_4_17B_SCOUT = "us.meta.llama4-scout-17b-instruct-v1:0"
 
@@ -22,13 +22,15 @@ class ModelType(Enum):
 
 @dataclass
 class MessageContent:
-    """Dataclass cho nội dung tin nhắn"""
+    """Nội dung của một phần tin nhắn"""
+
     type: str
     text: str
 
 @dataclass
 class Message:
-    """Dataclass cho một tin nhắn trong cuộc trò chuyện."""
+    """Một tin nhắn trong cuộc trò chuyện."""
+
     role: str
     content: List[MessageContent]
 
@@ -38,18 +40,20 @@ class Message:
 
 @dataclass
 class ClaudeConfig:
-    """Cấu hình cho Claude API"""
+    """Cấu hình cho Claude API."""
+
     model_id: str = ModelVersion.CLAUDE_3_5_SONNET_V1.value
     max_tokens: int = 1000
     temperature: float = 0.1
     top_p: float = 0.99
     top_k: Optional[int] = None
-    anthopic_version: str = "bedrock-2023-05-31"
+    anthropic_version: str = "bedrock-2023-05-31"
     stop_sequences: Optional[List[str]] = None
 
 @dataclass
 class LlamaConfig:
-    """Cấu hình cho Llama API"""
+    """Cấu hình cho Llama API."""
+
     model_id: str = ModelVersion.LLAMA_4_17B_SCOUT.value
     max_gen_len: int = 2000
     temperature: float = 0.5
@@ -63,15 +67,17 @@ class LlamaConfig:
 
 
 class LlamaClientError(Exception):
-    """Lỗi tùy chỉnh cho LlamaClient"""
+    """Lỗi tùy chỉnh cho LlamaClient."""
+
     pass
 
 class ClaudeClientError(Exception):
-    """Lỗi tùy chỉnh cho ClaudeClient"""
+    """Lỗi tùy chỉnh cho ClaudeClient."""
+
     pass
 
 def retry_on_failure(max_retries: int = 3, delay: float = 1.0):
-    """Decorator để tự động retry khi gặp lỗi Boto3Error hoặc ClientError."""
+    """Decorator retry khi gặp lỗi ClientError/BotoCoreError."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -96,26 +102,26 @@ def retry_on_failure(max_retries: int = 3, delay: float = 1.0):
 
 
 class ModelHandler(ABC):
-    """Abstract base class cho các model handlers"""
+    """Base class cho các model handlers."""
     
     @abstractmethod
     def build_request_body(self, messages: List[Message], system_prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Xây dựng request body cho mô hình cụ thể"""
+        """Xây dựng request body cho mô hình cụ thể."""
         pass
     
     @abstractmethod 
     def extract_response_text(self, response: Dict[str, Any]) -> str:
-        """Trích xuất text từ response của mô hình"""
+        """Trích xuất text từ response của mô hình."""
         pass
 
 class ClaudeHandler(ModelHandler):
-    """Handler cho các mô hình Claude"""
-    
+    """Handler cho các mô hình Claude."""
+
     def __init__(self, config: ClaudeConfig):
         self.config = config
     
     def build_request_body(self, messages: List[Message], system_prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Xây dựng request body cho Claude"""
+        """Xây dựng request body cho Claude."""
         body = {
             "anthropic_version": self.config.anthopic_version,
             "max_tokens": self.config.max_tokens,
@@ -141,20 +147,19 @@ class ClaudeHandler(ModelHandler):
         return body
     
     def extract_response_text(self, response: Dict[str, Any]) -> str:
-        """Trích xuất text từ Claude response"""
+        """Trích xuất text từ Claude response."""
         if 'content' in response and response['content']:
             return response['content'][0].get('text', '')
         return ""
 
 class LlamaHandler(ModelHandler):
-    """Handler cho các mô hình Llama"""
-    
+    """Handler cho các mô hình Llama."""
+
     def __init__(self, config: LlamaConfig):
         self.config = config
     
     def build_request_body(self, messages: List[Message], system_prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Xây dựng request body cho Llama"""
-        # Chuyển đổi messages thành format của Llama
+        """Xây dựng request body cho Llama."""
         prompt = self._format_messages_to_llama_prompt(messages, system_prompt)
         
         body = {
@@ -173,7 +178,7 @@ class LlamaHandler(ModelHandler):
         return body
     
     def _format_messages_to_llama_prompt(self, messages: List[Message], system_prompt: Optional[str] = None) -> str:
-        """Chuyển đổi messages thành format prompt của Llama"""
+        """Chuyển đổi messages thành format prompt của Llama."""
         formatted_parts = []
         
         if system_prompt:
@@ -192,8 +197,7 @@ class LlamaHandler(ModelHandler):
         return "".join(formatted_parts)
     
     def extract_response_text(self, response: Dict[str, Any]) -> str:
-        """Trích xuất text từ Llama response"""
-        # Try different possible response formats for Llama
+        """Trích xuất text từ Llama response."""
         if "generation" in response:
             return response.get("generation", "")
         elif "completion" in response:
@@ -210,7 +214,7 @@ class LlamaHandler(ModelHandler):
 # ----------------------------------------------------------------------------------
 
 class ModelClient:
-    """Enhanced Model Client hỗ trợ nhiều mô hình"""
+    """Client hỗ trợ nhiều mô hình."""
 
     def __init__(self, config: Optional[Union[ClaudeConfig, LlamaConfig]] = None, region_name: str = "us-east-1"):
         """Khởi tạo client với cấu hình tùy chọn."""
@@ -224,7 +228,7 @@ class ModelClient:
         self.handler = self._create_handler()
     
     def _determine_model_type(self) -> ModelType:
-        """Xác định loại mô hình dựa trên model_id"""
+        """Xác định loại mô hình dựa trên model_id."""
         model_id = self.config.model_id
         
         if any(claude_model.value == model_id for claude_model in [
@@ -236,26 +240,23 @@ class ModelClient:
         ]):
             return ModelType.LLAMA
         else:
-            # Mặc định là Claude nếu không xác định được
             return ModelType.CLAUDE
     
     def _create_handler(self) -> ModelHandler:
-        """Tạo handler phù hợp cho mô hình"""
+        """Tạo handler phù hợp cho mô hình."""
         if self.model_type == ModelType.CLAUDE:
-            # Nếu config không phải ClaudeConfig, tạo mới
             if not isinstance(self.config, ClaudeConfig):
                 claude_config = ClaudeConfig(model_id=self.config.model_id)
                 return ClaudeHandler(claude_config)
             return ClaudeHandler(self.config)
         else:  # LLAMA
-            # Nếu config không phải LlamaConfig, tạo mới
             if not isinstance(self.config, LlamaConfig):
                 llama_config = LlamaConfig(model_id=self.config.model_id)
                 return LlamaHandler(llama_config)
             return LlamaHandler(self.config)
     
     def _setup_logger(self) -> logging.Logger:
-        """Thiết lập logger cho ClaudeClient."""
+        """Thiết lập logger cho client."""
         logger = logging.getLogger(self.__class__.__name__)
         if not logger.handlers:
             handler = logging.StreamHandler()
@@ -334,21 +335,16 @@ class ModelClient:
 
 
 
-            # Log tokens usage khác nhau cho từng loại mô hình
-            # Determine model type from config_overrides or default config
+            # Log tokens usage theo loại mô hình
             current_model_type = ModelType.LLAMA if config_overrides and isinstance(config_overrides, LlamaConfig) else self.model_type
             
             if current_model_type == ModelType.CLAUDE:
                 tokens_used = response_body.get('usage', {}).get('output_tokens', 'N/A')
                 self.logger.info(f"Successfully generated message với mô hình Claude. Tokens Used: {tokens_used}")
             else:  # LLAMA
-                # Llama không có usage info trong response
-                # Llama models trên Bedrock hiện tại CÓ usage info trong response
                 prompt_tokens = response_body.get('prompt_token_count', 'N/A')
                 generation_tokens = response_body.get('generation_token_count', 'N/A')
-                self.logger.info(f"Successfully generated message với mô hình Llama. Input Tokens: {prompt_tokens}, Output Tokens: {generation_tokens}, Total Token: {prompt_tokens + generation_tokens}")
-                # Lưu ý: Một số mô hình Llama có thể không trả về prompt_token_count nếu sử dụng InvokeModel với prompt.
-                # Tuy nhiên, Converse API và các phiên bản Llama mới hơn thường cung cấp đủ thông tin. [5-8]
+                self.logger.info(f"Successfully generated message với mô hình Llama. Input Tokens: {prompt_tokens}, Output Tokens: {generation_tokens}")
 
             return response_body
         
@@ -496,7 +492,7 @@ def create_llama_config(**kwargs) -> LlamaConfig:
     return LlamaConfig(**kwargs)
 
 def load_config_from_yaml(yaml_path: str = "config/config.yaml", model_type: str = "claude") -> Union[ClaudeConfig, LlamaConfig]:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     if model_type.lower() == "claude":
         return ClaudeConfig(**config_dict.get("claude", {}))
@@ -506,26 +502,26 @@ def load_config_from_yaml(yaml_path: str = "config/config.yaml", model_type: str
         raise ValueError(f"Unknown model_type: {model_type}")
 
 def load_cache_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("cache", {})
 
 def load_llm_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("llm", {})
 
 def load_embedding_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("embedding", {})
 
 def load_intent_config(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("intent", {})
 
 def load_prompt_templates(yaml_path: str = "config/config.yaml") -> dict:
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding = "utf-8-sig") as f:
         config_dict = yaml.safe_load(f)
     return config_dict.get("prompt_templates", {})

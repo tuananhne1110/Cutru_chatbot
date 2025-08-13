@@ -76,3 +76,15 @@
 .bounce-in {
   animation: bounce-in 0.6s ease-out;
 }
+
+/* Modal slide in animation - y hệt như UI.html */
+@keyframes modalSlideIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

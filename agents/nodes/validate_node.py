@@ -3,8 +3,15 @@ import logging
 import traceback
 from agents.state import ChatState
 from agents.guardrails.guardrails import Guardrails
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-guardrails = Guardrails()
+guardrails = Guardrails(
+    guardrail_id= os.getenv("GUARDRAIL_ID"),
+    guardrail_version= os.getenv("GUARDRAIL_VERSION"),
+    region_name="us-east-1"
+)
 logger = logging.getLogger(__name__)
 
 async def validate_output(state: ChatState) -> ChatState:
