@@ -9,7 +9,7 @@ from agents.nodes.validate_node import validate_output
 from agents.nodes.memory_node import update_memory
 from agents.nodes.semantic_cache_node import semantic_cache
 from agents.nodes.guardrails_node import guardrails_input
-from config.app_config import langsmith_cfg
+from config import settings
 import os
 
 class LangChainRAGComponents:
@@ -54,8 +54,8 @@ def create_rag_workflow():
     app = workflow.compile(checkpointer=checkpointer)
     
     # Thêm metadata từ config cho LangSmith tracking
-    if langsmith_cfg.get("tracing_enabled", False):
-        app.metadata = langsmith_cfg.get("metadata", {})
+    if settings.langsmith_config.get("tracing_enabled", False):
+        app.metadata = settings.langsmith_config.get("metadata", {})
         
     return app
 

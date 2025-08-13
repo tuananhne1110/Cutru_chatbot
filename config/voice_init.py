@@ -27,7 +27,7 @@ def initialize_voice_model(config: dict) -> Optional[object]:
         logger.info("Initializing voice-to-text model...")
         
         # Import here to avoid circular imports
-        from stream_speech import SpeechRecognizer
+        from speech.stream_speech import SpeechRecognizer
         
         # Get configuration
         model_name = config.get("model_name", "vinai/PhoWhisper-medium")

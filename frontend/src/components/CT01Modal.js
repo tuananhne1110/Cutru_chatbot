@@ -165,7 +165,7 @@ function CT01Modal({ isOpen, onClose, onChatMessage }) {
               <h2 className="text-xl font-semibold">
                 {templateLoading ? 'Đang tải template...' : 
                  template ? `Biểu mẫu ${template.code} - ${template.name}` : 
-                 'Biểu mẫu CT01 - Tờ khai thuế thu nhập cá nhân'}
+                 'Biểu mẫu CT01 - Tờ khai thay đổi thông tin cư trú'}
               </h2>
               <p className="text-sm opacity-90">
                 {template ? template.description : 'Hệ thống tự động điền từ CCCD'}

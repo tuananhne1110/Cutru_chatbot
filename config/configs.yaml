@@ -1,0 +1,133 @@
+system_settings:
+  logger:
+    name: "RAGWorkflow"
+    log_level: "INFO"
+    log_file: null
+    enable_performance_logging: true
+    enable_model_logging: true
+
+models:
+  aws_bedrock:
+    llm_model_configs:
+      claude:
+        model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        region_name: "us-east-1"
+        max_tokens: 1000
+        temperature: 0.0
+        top_p: 0.9
+        top_k: null
+        anthropic_version: "bedrock-2023-05-31"
+      llama:
+        model_id: "us.meta.llama4-scout-17b-instruct-v1:0"
+        region_name: "us-east-1"
+        max_gen_len: 2000
+        temperature: 0.0
+        top_p: 0.0
+        top_k: null
+
+    embedding_model_configs:
+      titan:
+        model_id: "amazon.titan-embed-text-v2:0"
+        output_dimension: 1024
+        normalize: true
+
+    guardrails:
+      model_id: "us.meta.llama4-scout-17b-instruct-v1:0"
+      region_name: "us-east-1"
+      guardrail_id: "your-guardrail-id"
+      guardrail_version: "DRAFT"
+      enabled: false
+
+  hugging_face:
+    embedding_model_configs:
+      gte:
+        model_name: "Alibaba-NLP/gte-multilingual-base"
+        device: "cuda"
+        trust_remote_code: true
+        enabled: true
+        model_params: {}
+      qwen:
+        model_name: "Qwen/Qwen3-Embedding-0.6B"
+        prompt_name: "query"
+        device: "cuda"
+        enabled: true
+        model_params: {}
+
+    reranker_model_configs:
+      bge:
+        model_name: "BAAI/bge-reranker-v2-m3"
+        device: "cuda"
+        enabled: true
+        model_params: {}
+    
+    voice_to_text_config:
+      model_name: "vinai/PhoWhisper-medium"
+      batch_size: 8
+      num_workers: 1
+      device: null
+      preload_model: true
+      vad_aggressiveness: 3
+      frame_duration: 30
+      sample_rate: 16000
+
+database:
+  db_type:
+    - database_name: qdrant
+      qdrant_host: "localhost"
+      qdrant_port: 6333
+      qdrant_url: null
+      qdrant_api_key: null
+      collections:
+        - name: "PROCEDURE"
+          description: "Thủ tục hành chính về lĩnh vực cư trú"
+          domain: "cu_tru"
+          collection_name: "procedure_chunks"
+        - name: "LEGAL"
+          description: "Luật cư trú"
+          domain: "cu_tru"
+          collection_name: "legal_chunks"
+        - name: "FORM"
+          description: "Giấy tờ/biểu mẫu về lĩnh vực cư trú"
+          domain: "cu_tru"
+          collection_name: "form_chunks"
+        - name: "TEMPLATE"
+          description: "Biểu mẫu gốc về lĩnh vực cư trú"
+          domain: "cu_tru"
+          collection_name: "template_chunks"
+        - name: "GENERAL"
+          description: "Giao tiếp chung"
+          domain: "cu_tru"
+          collection_name: "general_chunks"
+
+intent:
+  intent_to_collections:
+    procedure: [procedure_chunks, legal_chunks, template_chunks]
+    law: [legal_chunks]
+    form: [form_chunks, template_chunks]
+    term: [legal_chunks]
+    template: [template_chunks]
+    general: [general_chunks]
+
+cache:
+  cache_limit: 1000
+  chunk_size: 100
+  threshold: 0.85
+  paraphrase_cache_prefix: "paraphrase_cache:"
+  cache_key: "semantic_prompt_cache"
+
+langsmith:
+  project_name: "cutru-chatbot"
+  api_url: "https://api.smith.langchain.com"
+  tracing_enabled: true
+  tags:
+    - "development"
+    - "rag-workflow"
+    - "vietnamese-legal"
+  metadata:
+    application: "cutru-chatbot"
+    version: "2.0.0"
+    environment: "development"
+
+llm:
+  prompt_version: "v1"
+  default_model_name: "us.meta.llama4-scout-17b-instruct-v1:0"

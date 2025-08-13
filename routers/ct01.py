@@ -29,7 +29,7 @@ async def generate_ct01_file(data: CT01FormData):
         print(f"🔍 Template info: {data.template}")
         
         # Đọc file ct01.html template
-        template_path = "ct01.html"
+        template_path = "templates/ct01.html"
         print(f"🔍 Reading HTML template from: {template_path}")
         
         with open(template_path, 'r', encoding='utf-8') as f:

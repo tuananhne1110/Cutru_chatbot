@@ -10,8 +10,8 @@ import os
 # Add the current directory to Python path to import stream_speech
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from stream_speech import SpeechRecognizer
-from config.app_config import voice_model, voice_cfg, voice_model_info
+from speech.stream_speech import SpeechRecognizer
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +31,18 @@ async def start_recording():
             current_recognizer.stop()
         
         # Always use preloaded model - it should be loaded at startup
-        if voice_model:
-            # Use the preloaded model directly
-            current_recognizer = voice_model
+        # Initialize voice model from settings
+        voice_config = settings.voice_config
+        if voice_config and voice_config.preload_model:
             logger.info("Using preloaded voice model")
+            from config.voice_init import initialize_voice_model
+            current_recognizer = initialize_voice_model({
+                "model_name": voice_config.model_name,
+                "device": voice_config.device,
+                "batch_size": voice_config.batch_size,
+                "num_workers": voice_config.num_workers,
+                "preload_model": voice_config.preload_model
+            })
             
             # Reset the model state for new recording
             current_recognizer.reset_recording()
@@ -53,10 +61,10 @@ async def start_recording():
             logger.warning("No preloaded model found, creating new one...")
             try:
                 current_recognizer = SpeechRecognizer(
-                    model_name=voice_cfg.get("model_name", "vinai/PhoWhisper-medium"),
-                    device=voice_cfg.get("device"),
-                    batch_size=voice_cfg.get("batch_size", 8),
-                    num_workers=voice_cfg.get("num_workers", 1)
+                    model_name=voice_config.model_name if voice_config else "vinai/PhoWhisper-medium",
+                    device=voice_config.device if voice_config else None,
+                    batch_size=voice_config.batch_size if voice_config else 8,
+                    num_workers=voice_config.num_workers if voice_config else 1
                 )
             except Exception as audio_error:
                 logger.error(f"Audio device error: {audio_error}")
@@ -138,8 +146,14 @@ async def get_model_info():
     """Lấy thông tin về voice model configuration"""
     try:
         return {
-            "model_info": voice_model_info,
-            "preloaded": voice_model is not None
+                    "model_info": {
+            "model_name": voice_config.model_name if voice_config else "vinai/PhoWhisper-medium",
+            "device": voice_config.device if voice_config else None,
+            "batch_size": voice_config.batch_size if voice_config else 8,
+            "num_workers": voice_config.num_workers if voice_config else 1,
+            "preload_model": voice_config.preload_model if voice_config else False
+        },
+        "preloaded": voice_config and voice_config.preload_model
         }
     except Exception as e:
         logger.error(f"Error getting model info: {e}")

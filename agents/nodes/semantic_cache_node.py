@@ -1,6 +1,6 @@
 import asyncio
 from agents.state import ChatState
-from services.embedding import get_embedding
+from embeddings import get_embedding
 from services.cache_service import get_semantic_cached_result
 
 async def semantic_cache(state: ChatState) -> ChatState:

@@ -7,8 +7,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from config.app_config import embedding_model
-from config.app_config import qdrant_client as client
+from config import settings
 
 # 1. Đường dẫn các file chunk
 json_files = [
@@ -130,20 +129,31 @@ def lower_metadata(chunk):
 def create_collection(client, name, vector_size):
     try:
         client.get_collection(name)
-        print(f"Using existing collection: {name}")
+        print(f"Collection {name} exists, recreating with new dimension {vector_size}")
+        client.delete_collection(name)
     except:
-        client.recreate_collection(
-            collection_name=name,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
-        )
-        print(f"Created new collection: {name}")
+        pass
+    
+    client.recreate_collection(
+        collection_name=name,
+        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+    )
+    print(f"Created new collection: {name} with dimension {vector_size}")
 
 # 5. Hàm insert lên Qdrant
-def insert_chunks(client, collection_name, chunks, model):
+def insert_chunks(client, collection_name, chunks):
     if not chunks:
         return
     texts = [prepare_text_for_embedding(chunk) for chunk in chunks]
-    embeddings = model.encode(texts, show_progress_bar=True, batch_size=32)
+    
+    # Initialize embedding model from settings
+    from embeddings import get_embedding_model
+    model = get_embedding_model()
+    
+    embeddings = []
+    for text in texts:
+        embedding = model.encode(text)
+        embeddings.append(embedding)
     metadatas = [lower_metadata(chunk) for chunk in chunks]
     vector_size = len(embeddings[0])
     create_collection(client, collection_name, vector_size)
@@ -157,7 +167,7 @@ def insert_chunks(client, collection_name, chunks, model):
     for i, (text, embedding, metadata) in enumerate(zip(texts, embeddings, metadatas)):
         point = PointStruct(
             id=start_id + i,
-            vector=embedding.tolist(),
+            vector=embedding,
             payload={
                 "text": text,
                 **metadata
@@ -172,9 +182,17 @@ def insert_chunks(client, collection_name, chunks, model):
     print(f"Collection {collection_name} total points: {client.count(collection_name=collection_name).count}")
 
 # 6. Insert từng loại chunk
-insert_chunks(client, "form_chunks", form_chunks, embedding_model)
-insert_chunks(client, "legal_chunks", law_chunks, embedding_model)
-insert_chunks(client, "procedure_chunks", procedure_chunks, embedding_model)
-insert_chunks(client, "template_chunks", template_chunks, embedding_model)
+# Setup Qdrant client from settings
+from qdrant_client import QdrantClient
+qdrant_config = settings.retrieval_settings.qdrant_config
+if qdrant_config.qdrant_url:
+    client = QdrantClient(url=qdrant_config.qdrant_url, api_key=qdrant_config.qdrant_api_key)
+else:
+    client = QdrantClient(host=qdrant_config.qdrant_host, port=qdrant_config.qdrant_port)
+
+insert_chunks(client, "form_chunks", form_chunks)
+insert_chunks(client, "legal_chunks", law_chunks)
+insert_chunks(client, "procedure_chunks", procedure_chunks)
+insert_chunks(client, "template_chunks", template_chunks)
 
 print("✅ Đã embedding và import lên Qdrant localhost thành công!") 
