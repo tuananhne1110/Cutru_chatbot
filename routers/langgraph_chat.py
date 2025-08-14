@@ -1,143 +1,108 @@
-# routers/langgraph_chat_graph.py
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 import uuid
 import logging
 from models.schemas import ChatRequest, ChatResponse, Source
-from agents.workflow_graph_rag import graph_rag_workflow  # Use new workflow
+from agents.workflow import rag_workflow
 from agents.utils.message_conversion import create_initial_state, extract_results_from_state
-from agents.state_graph import GraphChatState  # Use extended state
+from agents.state import ChatState
 from langchain_core.runnables import RunnableConfig
 from typing import cast
 from fastapi.responses import StreamingResponse
 import json
-from config.app_config import langsmith_cfg, graph_rag_service
+from config.app_config import langsmith_cfg
 import os
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/chat/graph", tags=["Graph RAG Chat"])
+router = APIRouter(prefix="/chat", tags=["LangGraph Chat"])
 
 @router.post("/", response_model=ChatResponse)
-async def graph_rag_chat(request: ChatRequest):
-    """Chat endpoint using Graph RAG workflow"""
+async def langgraph_chat(request: ChatRequest):
+    """Chat endpoint sử dụng LangGraph workflow"""
     try:
         session_id = request.session_id or str(uuid.uuid4())
         messages = request.messages or []
         question = request.question
         
-        # Check if Graph RAG is available
-        if not graph_rag_service:
-            logger.warning("Graph RAG not available, falling back to vector RAG")
-            # Fallback to original endpoint
-            from routers.langgraph_chat import langgraph_chat
-            return await langgraph_chat(request)
+        # Build initial state for LangGraph
+        initial_state: ChatState = create_initial_state(question, messages, session_id)
         
-        # Build initial state
-        initial_state: GraphChatState = create_initial_state(question, messages, session_id)
-        
-        # Add Graph RAG specific fields
-        initial_state.update({
-            "graph_context": None,
-            "graph_entities": [],
-            "graph_relationships": [],
-            "context_source": "hybrid"
-        })
-        
-        # Prepare config
+        # Prepare config with LangSmith metadata
         config_dict = {"configurable": {"thread_id": session_id}}
         
+        # Add LangSmith tags and metadata if tracing is enabled
         if langsmith_cfg.get("tracing_enabled", False):
-            config_dict["tags"] = langsmith_cfg.get("tags", []) + ["graph-rag"]
+            config_dict["tags"] = langsmith_cfg.get("tags", [])
             config_dict["metadata"] = {
                 **langsmith_cfg.get("metadata", {}),
                 "session_id": session_id,
-                "endpoint": "/chat/graph",
+                "endpoint": "/chat",
                 "timestamp": datetime.now().isoformat(),
                 "question_length": len(question) if question else 0,
-                "message_count": len(messages),
-                "rag_type": "graph_rag"
+                "message_count": len(messages)
             }
         
         config = cast(RunnableConfig, config_dict)
         
-        # Run Graph RAG workflow
-        result = await graph_rag_workflow.ainvoke(initial_state, config=config)
+        # Run LangGraph workflow
+        result = await rag_workflow.ainvoke(initial_state, config=config)
         
         # Extract results
         results = extract_results_from_state(result)
         answer = results["answer"]
         sources = results["sources"]
         
-        # Add Graph RAG metadata
-        metadata = {
-            "rag_type": "graph_rag",
-            "graph_context_used": bool(result.get("graph_context")),
-            "context_source": result.get("context_source", "hybrid")
-        }
-        
         return ChatResponse(
             answer=answer,
             sources=[Source(**src) for src in sources],
             session_id=session_id,
-            timestamp=datetime.now().isoformat(),
-            metadata=metadata
+            timestamp=datetime.now().isoformat()
         )
-        
     except Exception as e:
-        logger.error(f"Exception in Graph RAG endpoint: {e}")
+        logger.error(f"Exception in /langgraph-chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stream")
-async def graph_rag_chat_stream(request: ChatRequest):
-    """Streaming Graph RAG chat endpoint"""
+async def langgraph_chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint sử dụng LangGraph workflow.
+    """
     try:
         session_id = request.session_id or str(uuid.uuid4())
         messages = request.messages or []
         question = request.question
+        initial_state: ChatState = create_initial_state(question, messages, session_id)
         
-        # Check if Graph RAG is available
-        if not graph_rag_service:
-            logger.warning("Graph RAG not available, falling back to vector RAG")
-            from routers.langgraph_chat import langgraph_chat_stream
-            return await langgraph_chat_stream(request)
-        
-        # Build initial state with Graph RAG fields
-        initial_state: GraphChatState = create_initial_state(question, messages, session_id)
-        initial_state.update({
-            "graph_context": None,
-            "graph_entities": [],
-            "graph_relationships": [],
-            "context_source": "hybrid"
-        })
-        
-        # Config
+        # Prepare config with LangSmith metadata
         config_dict = {"configurable": {"thread_id": session_id}}
         
+        # Add LangSmith tags and metadata if tracing is enabled
         if langsmith_cfg.get("tracing_enabled", False):
-            config_dict["tags"] = langsmith_cfg.get("tags", []) + ["graph-rag", "streaming"]
+            config_dict["tags"] = langsmith_cfg.get("tags", []) + ["streaming"]
             config_dict["metadata"] = {
                 **langsmith_cfg.get("metadata", {}),
                 "session_id": session_id,
-                "endpoint": "/chat/graph/stream",
+                "endpoint": "/chat/stream",
                 "timestamp": datetime.now().isoformat(),
                 "question_length": len(question) if question else 0,
                 "message_count": len(messages),
-                "streaming": True,
-                "rag_type": "graph_rag"
+                "streaming": True
             }
         
         config = cast(RunnableConfig, config_dict)
         
-        # Run workflow
-        result = await graph_rag_workflow.ainvoke(initial_state, config=config)
+        # Run workflow to get result
+        result = await rag_workflow.ainvoke(initial_state, config=config)
         
-        # Check for guardrails blocking
+        # Kiểm tra nếu guardrails đã chặn
         if result.get("error") == "input_validation_failed":
-            answer = result.get("answer", "Xin lỗi, tôi không thể hỗ trợ câu hỏi này.")
+            answer = result.get("answer", "Xin lỗi, tôi không thể hỗ trợ câu hỏi này. Vui lòng hỏi về lĩnh vực pháp luật Việt Nam.")
             def guardrails_blocked_stream():
+                # Stream từng ký tự của answer
                 for char in answer:
                     yield f"data: {json.dumps({'type': 'chunk', 'content': char})}\n\n"
+                # Gửi chunk done để báo hiệu kết thúc
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return StreamingResponse(guardrails_blocked_stream(), media_type="text/event-stream")
         
@@ -155,29 +120,18 @@ async def graph_rag_chat_stream(request: ChatRequest):
         # Stream LLM output
         from services.llm_service import call_llm_stream
         def stream_llm():
-            yield " " * 2048 + "\n"  # Buffer breaker
+            # Yield một chuỗi dummy lớn để phá buffer
+            yield " " * 2048 + "\n"
             for chunk in call_llm_stream(prompt, model="llama"):
                 if chunk:
                     yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
-            
-            # Send Graph RAG metadata
-            graph_metadata = {
-                "graph_context_used": bool(result.get("graph_context")),
-                "context_source": result.get("context_source", "hybrid"),
-                "rag_type": "graph_rag"
-            }
-            yield f"data: {json.dumps({'type': 'metadata', 'metadata': graph_metadata})}\n\n"
-            
-            # Send sources
+            # Gửi sources cho frontend
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
-            
-            # Done
+            # Gửi chunk done để báo hiệu kết thúc
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
-            
         return StreamingResponse(stream_llm(), media_type="text/event-stream")
-        
     except Exception as e:
-        logger.error(f"Exception in Graph RAG streaming: {e}", exc_info=True)
+        logger.error(f"Exception in /chat/stream endpoint: {e}",exc_info=True)
         def error_stream(e=e):
             yield f"data: {{\"type\": \"error\", \"content\": \"Đã xảy ra lỗi: {str(e)}\"}}\n\n"
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
+        return StreamingResponse(error_stream(), media_type="text/event-stream") 
