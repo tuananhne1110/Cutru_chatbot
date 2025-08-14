@@ -66,6 +66,7 @@ log/
 # Data files
 *.pickle
 *.json
+!frontend/public/*.json
 !chunking/output_json/*.json
 !package.json
 !package-lock.json
