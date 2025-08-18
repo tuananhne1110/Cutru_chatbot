@@ -5,12 +5,6 @@ const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPAB
 
 console.log('Supabase URL:', supabaseUrl);
 console.log('Supabase Key available:', !!supabaseKey && supabaseKey !== 'your_anon_key_here');
-console.log('Environment variables:');
-console.log('- REACT_APP_SUPABASE_URL:', process.env.REACT_APP_SUPABASE_URL);
-console.log('- REACT_APP_SUPABASE_ANON_KEY:', process.env.REACT_APP_SUPABASE_ANON_KEY);
-console.log('- SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('- SUPABASE_KEY length:', process.env.SUPABASE_KEY ? process.env.SUPABASE_KEY.length : 'undefined');
-console.log('- SUPABASE_KEY starts with:', process.env.SUPABASE_KEY ? process.env.SUPABASE_KEY.substring(0, 20) + '...' : 'undefined');
 
 // Chỉ tạo client nếu có URL và key hợp lệ
 let supabase = null;
@@ -26,21 +20,51 @@ if (supabaseUrl && supabaseKey && supabaseKey !== 'your_anon_key_here') {
 }
 
 export const ct01Service = {
-  // Lấy biểu mẫu CT01 từ file local
+  // Lấy thông tin template CT01 (không còn dùng JSON, chỉ trả về metadata)
   async getCT01Template() {
     try {
-      // Luôn load từ file local để đảm bảo consistency
-      console.log('Loading CT01 template from local file...');
+      console.log('Getting CT01 template metadata...');
       
-      // Fetch từ file local ct01-template.json
-      const response = await fetch('/ct01-template.json');
-      if (!response.ok) {
-        throw new Error('Failed to load local template file');
-      }
+      // Trả về metadata cố định cho CT01
+      const template = {
+        form_code: 'CT01',
+        form_title: 'TỜ KHAI THAY ĐỔI THÔNG TIN CƯ TRÚ',
+        code: 'CT01',
+        name: 'Biểu mẫu CT01',
+        description: 'Tờ khai thay đổi thông tin cư trú',
+        file_url: 'https://rjrqtogyzmgyqvryxfyk.supabase.co/storage/v1/object/public/bieumau/ct01.docx',
+        template_url: 'https://rjrqtogyzmgyqvryxfyk.supabase.co/storage/v1/object/public/bieumau/ct01.docx',
+        // Định nghĩa các trường cần thiết cho form
+        fields: [
+          { id: "co_quan_tiep_nhan", label: "Kính gửi", type: "text" },
+          { id: "ho_ten", label: "Họ, chữ đệm và tên", type: "text" },
+          { id: "ngay_sinh", label: "Ngày, tháng, năm sinh", type: "date" },
+          { id: "gioi_tinh", label: "Giới tính", type: "select", options: ["Nam", "Nữ", "Khác"] },
+          { id: "so_dinh_danh", label: "Số định danh cá nhân", type: "text" },
+          { id: "dien_thoai", label: "Số điện thoại liên hệ", type: "text" },
+          { id: "email", label: "Email", type: "email" },
+          { id: "chu_ho", label: "Họ, chữ đệm và tên chủ hộ", type: "text" },
+          { id: "quan_he_chu_ho", label: "Mối quan hệ với chủ hộ", type: "text" },
+          { id: "dinh_danh_chu_ho", label: "Số định danh cá nhân của chủ hộ", type: "text" },
+          { id: "noi_dung_de_nghi", label: "Nội dung đề nghị", type: "textarea" },
+          {
+            id: "thanh_vien_ho_gia_dinh",
+            label: "Thành viên trong hộ gia đình cùng thay đổi",
+            type: "table",
+            columns: [
+              { id: "tt", label: "TT", type: "number", name: "tt" },
+              { id: "ho_ten", label: "Họ và tên", type: "text", name: "ho_ten" },
+              { id: "ngay_sinh", label: "Ngày sinh", type: "date", name: "ngay_sinh" },
+              { id: "gioi_tinh", label: "Giới tính", type: "select", options: ["Nam", "Nữ", "Khác"], name: "gioi_tinh" },
+              { id: "so_dinh_danh", label: "Số định danh cá nhân", type: "text", name: "so_dinh_danh" },
+              { id: "quan_he", label: "Mối quan hệ với chủ hộ", type: "text", name: "quan_he" }
+            ]
+          },
+
+        ]
+      };
       
-      const template = await response.json();
-      console.log('Successfully loaded template from local file:', template);
-      
+      console.log('Successfully loaded CT01 template metadata:', template);
       return this.normalizeTemplate(template);
     } catch (error) {
       console.error('Error loading CT01 template:', error);
@@ -51,6 +75,7 @@ export const ct01Service = {
         code: 'CT01',
         name: 'Biểu mẫu CT01',
         description: 'Template loading failed',
+        file_url: 'https://rjrqtogyzmgyqvryxfyk.supabase.co/storage/v1/object/public/bieumau/ct01.docx',
         fields: []
       };
     }
@@ -74,8 +99,6 @@ export const ct01Service = {
       }))
     };
   },
-
-
 
   // Lưu dữ liệu CCCD
   async saveCCCDData(cccdData) {
@@ -168,8 +191,8 @@ export const ct01Service = {
     }
   },
 
-  // Tạo file CT01
-  async generateCT01File(formData, cccdData, template, type = 'html') {
+  // Tạo file CT01 từ DOCX gốc
+  async generateCT01File(formData, cccdData, template, type = 'docx') {
     try {
       console.log('Generating CT01 file with data:', formData);
       console.log('Using template:', template);
@@ -196,14 +219,8 @@ export const ct01Service = {
         throw new Error(`Failed to generate file: ${errorText}`);
       }
 
-      if (type === 'html') {
-        // Trả về HTML content để hiển thị
-        const htmlContent = await response.text();
-        return new Blob([htmlContent], { type: 'text/html' });
-      } else {
-        // Trả về file binary (PDF, DOCX)
-        return await response.blob();
-      }
+      // Trả về file binary (DOCX hoặc PDF)
+      return await response.blob();
     } catch (error) {
       console.error('Error generating CT01 file:', error);
       // Fallback: simulate file generation
@@ -212,7 +229,7 @@ export const ct01Service = {
   },
 
    // Simulate file generation (for development)
-   simulateFileGeneration(formData, template, type = 'pdf') {
+   simulateFileGeneration(formData, template, type = 'docx') {
      console.log('Simulating file generation with data:', formData);
      console.log('Using template: ct01.docx from Supabase Storage');
      
@@ -232,18 +249,11 @@ export const ct01Service = {
                     `3. Số định danh cá nhân của chủ hộ: ${formData.dinh_danh_chu_ho || ''}\n\n` +
                     `III. NỘI DUNG ĐỀ NGHỊ\n` +
                     `${formData.noi_dung_de_nghi || ''}\n\n` +
-                    `IV. Ý KIẾN CỦA CHỦ HỘ\n` +
-                    `${formData.ykien_chu_ho || ''}\n\n` +
-                    `V. Ý KIẾN CỦA CHỦ SỞ HỮU CHỖ Ở HỢP PHÁP\n` +
-                    `Họ và tên chủ sở hữu: ${formData.chu_so_huu_ho_ten || ''}\n` +
-                    `Số định danh chủ sở hữu: ${formData.chu_so_huu_dinh_danh || ''}\n` +
-                    `Ý kiến: ${formData.ykien_chu_so_huu || ''}\n\n` +
-                    `VI. Ý KIẾN CỦA CHA, MẸ HOẶC NGƯỜI GIÁM HỘ\n` +
-                    `Họ và tên cha/mẹ/người giám hộ: ${formData.cha_me_ho_ten || ''}\n` +
-                    `Số định danh cha/mẹ/người giám hộ: ${formData.cha_me_dinh_danh || ''}\n` +
-                    `Ý kiến: ${formData.ykien_cha_me || ''}\n\n` +
-                    `VII. NGƯỜI KÊ KHAI\n` +
-                    `Họ và tên người kê khai: ${formData.nguoi_ke_khai || ''}\n\n` +
+                    `IV. THÀNH VIÊN TRONG HỘ GIA ĐÌNH CÙNG THAY ĐỔI\n` +
+                    `${formData.thanh_vien_ho_gia_dinh ? 
+                        formData.thanh_vien_ho_gia_dinh.map((member, index) => 
+                            `${index + 1}. ${member.ho_ten || ''} - ${member.ngay_sinh || ''} - ${member.gioi_tinh || ''} - ${member.so_dinh_danh || ''} - ${member.quan_he || ''}`
+                        ).join('\n') : ''}\n\n` +
                     `\nFile này được tạo từ template gốc: ct01.docx\n` +
                     `Loại file: ${type}\n` +
                     `Thời gian tạo: ${new Date().toLocaleString('vi-VN')}`;

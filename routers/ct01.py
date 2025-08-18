@@ -1,11 +1,16 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import requests
 import io
 from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import tempfile
 import os
+from datetime import datetime
+import re
 
 router = APIRouter(prefix="/api/ct01", tags=["CT01"])
 
@@ -22,51 +27,61 @@ class CT01SubmitData(BaseModel):
 @router.post("/generate")
 async def generate_ct01_file(data: CT01FormData):
     """
-    Tạo file CT01 từ template HTML với data đã điền
+    Tạo file CT01 từ file DOCX gốc với data đã điền
     """
     try:
-        print(f"🔍 Received data: {data.formData}")
-        print(f"🔍 Template info: {data.template}")
+        print(f"Received data: {data.formData}")
+        print(f"Template info: {data.template}")
         
-        # Đọc file ct01.html template
-        template_path = "templates/ct01.html"
-        print(f"🔍 Reading HTML template from: {template_path}")
+        # Lấy file DOCX gốc từ Supabase
+        docx_url = "https://rjrqtogyzmgyqvryxfyk.supabase.co/storage/v1/object/public/bieumau/ct01.docx"
+        print(f"Downloading DOCX template from: {docx_url}")
         
-        with open(template_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
+        # Download file DOCX từ Supabase
+        response = requests.get(docx_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Không thể tải file template từ Supabase")
         
-        print(f"HTML template loaded successfully: {len(html_content)} characters")
+        # Tạo file tạm để lưu DOCX
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_file:
+            temp_file.write(response.content)
+            temp_file_path = temp_file.name
         
-        # Điền data vào HTML template với cccd_data
-        filled_html = fill_html_template_with_data(html_content, data.formData, data.cccdData)
-        print(f"Data filled into HTML template")
-        
-        if data.type == "html":
-            # Trả về HTML
-            from fastapi.responses import Response
-            filename = f"CT01-{data.template.get('code', 'CT01')}.html"
-            return Response(
-                content=filled_html,
-                media_type="text/html",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
-        else:
-            # Convert HTML to PDF hoặc DOCX
-            output_file = convert_html_to_format(filled_html, data.type)
+        try:
+            # Điền data vào file DOCX
+            filled_docx_bytes = fill_docx_template_with_data(temp_file_path, data.formData, data.cccdData)
+            print(f"Data filled into DOCX template")
             
-            # Trả về file
-            from fastapi.responses import StreamingResponse
-            
-            filename = f"CT01-{data.template.get('code', 'CT01')}.{data.type}"
-            media_type = "application/pdf" if data.type == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            
-            print(f"Returning file: {filename}")
-            
-            return StreamingResponse(
-                io.BytesIO(output_file),
-                media_type=media_type,
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
+            if data.type == "docx":
+                # Trả về DOCX
+                filename = f"CT01-{data.template.get('code', 'CT01')}.docx"
+                return StreamingResponse(
+                    io.BytesIO(filled_docx_bytes),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+            elif data.type == "pdf":
+                # Convert DOCX to PDF
+                pdf_bytes = convert_docx_to_pdf(filled_docx_bytes)
+                filename = f"CT01-{data.template.get('code', 'CT01')}.pdf"
+                return StreamingResponse(
+                    io.BytesIO(pdf_bytes),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+            else:
+                # Trả về DOCX mặc định
+                filename = f"CT01-{data.template.get('code', 'CT01')}.docx"
+                return StreamingResponse(
+                    io.BytesIO(filled_docx_bytes),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+        
+        finally:
+            # Xóa file tạm
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
         
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -90,19 +105,26 @@ async def submit_ct01_form(data: CT01SubmitData):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error submitting form: {str(e)}")
 
-def fill_html_template_with_data(html_content: str, form_data: Dict[str, Any], cccd_data: Dict[str, Any] = None) -> str:
+def fill_docx_template_with_data(docx_path: str, form_data: Dict[str, Any], cccd_data: Dict[str, Any] = None) -> bytes:
     """
-    Điền data vào template HTML
+    Điền data vào file DOCX template
     """
-    print(f"🔍 Filling HTML template with data: {form_data}")
+    print(f"Filling DOCX template with data: {form_data}")
     if cccd_data:
-        print(f"🔍 CCCD data available: {cccd_data}")
+        print(f"CCCD data available: {cccd_data}")
     
-    # Parse HTML với BeautifulSoup
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html_content, 'html.parser')
+    # Debug: Log tất cả các trường có data
+    print("📊 Available form fields:")
+    for key, value in form_data.items():
+        if value:  # Chỉ log những trường có giá trị
+            print(f"   {key}: '{value}'")
     
-    replacements_made = 0
+    # Mở file DOCX
+    doc = Document(docx_path)
+    
+    # Lấy ngày hiện tại cho phần chữ ký
+    current_date = datetime.now()
+    formatted_date = f"ngày {current_date.day} tháng {current_date.month} năm {current_date.year}"
     
     # Helper function to get data with fallback to CCCD
     def get_field_value(field_name: str, cccd_field: str = None) -> str:
@@ -112,689 +134,409 @@ def fill_html_template_with_data(html_content: str, form_data: Dict[str, Any], c
             value = cccd_data.get(cccd_field, "")
         return str(value) if value else ""
     
-    # 1. Điền "Kính gửi" - tìm và thay thế chuỗi có dấu ...
-    co_quan_tiep_nhan = get_field_value("co_quan_tiep_nhan")
-    if co_quan_tiep_nhan:
-        # Duyệt mọi span, vì span có thể chứa thẻ con (sup)
-        filled_kinh_gui = False
-        for span in soup.find_all('span'):
-            span_text = span.get_text(strip=False)
-            if span_text and "Kính gửi" in span_text:
-                # Dựng lại đúng cấu trúc: "Kính gửi" + sup(1) + ": " + cơ quan
-                span.clear()
-                span.append("Kính gửi")
-                sup_tag = soup.new_tag("sup")
-                sup_tag.string = "(1)"
-                span.append(sup_tag)
-                span.append(": ")
-                span.append(co_quan_tiep_nhan)
-                replacements_made += 1
-                filled_kinh_gui = True
-                print(f"Filled 'Kính gửi': {co_quan_tiep_nhan}")
-                break
-        if not filled_kinh_gui:
-            print("Không tìm thấy span phù hợp cho 'Kính gửi'")
+    # Hàm tách ngày, tháng, năm từ chuỗi "DD/MM/YYYY"
+    def parse_date(date_str):
+        try:
+            if "-" in date_str:  # yyyy-mm-dd format
+                parts = date_str.split("-")
+                return parts[2], parts[1], parts[0]
+            elif "/" in date_str:  # dd/mm/yyyy format
+                parts = date_str.split("/")
+                return parts[0], parts[1], parts[2] if len(parts) == 3 else ""
+            else:
+                return "", "", ""
+        except ValueError:
+            return "", "", ""
     
-    # 2. Điền "Họ, chữ đệm và tên" - với fallback từ CCCD
-    ho_ten_element = soup.find(string=lambda text: text and "1. Họ, chữ đệm và tên:" in text)
-    ho_ten = get_field_value("ho_ten", "personName")
-    if ho_ten_element and ho_ten:
-        new_text = ho_ten_element + " " + ho_ten
-        ho_ten_element.replace_with(new_text)
-        replacements_made += 1
-        print(f"Filled 'Họ tên': {ho_ten}")
+    # Hàm tách số định danh thành 12 ô
+    def split_id_number(id_number):
+        id_str = str(id_number).replace(" ", "").replace("-", "")
+        return list(id_str) if len(id_str) == 12 else [''] * 12
     
-    # 3. Điền ngày sinh - với fallback từ CCCD
-    ngay_sinh_element = soup.find(string=lambda text: text and "2. Ngày, tháng, năm sinh:" in text and "............/............./....................... 3. Giới tính:" in text)
-    ngay_sinh = get_field_value("ngay_sinh", "dateOfBirth")
-    gioi_tinh = get_field_value("gioi_tinh", "gender")
-    
-    if ngay_sinh_element and ngay_sinh:
-        # Parse ngày sinh - handle both formats
-        if "-" in ngay_sinh:  # yyyy-mm-dd (từ form)
-            parts = ngay_sinh.split("-")
-            day, month, year = parts[2], parts[1], parts[0]
-        elif "/" in ngay_sinh:  # dd/mm/yyyy (từ CCCD)
-            parts = ngay_sinh.split("/")
-            day, month, year = parts[0], parts[1], parts[2] if len(parts) == 3 else ""
+    def clean_dots_and_fill(text, value):
+        """Xóa tất cả dấu chấm và thêm giá trị vào cuối"""
+        if not value:
+            return text
+                
+        cleaned_text = re.sub(r'\.+', '', text)  
+        cleaned_text = re.sub(r'\.', '', cleaned_text) 
+        
+        # Làm sạch khoảng trắng thừa
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)  # Thay thế nhiều khoảng trắng bằng 1 khoảng trắng
+        cleaned_text = cleaned_text.strip()
+        
+        # Thêm giá trị
+        if cleaned_text.endswith(":"):
+            return f"{cleaned_text} {value}"
         else:
-            day, month, year = "", "", ""
+            return f"{cleaned_text}: {value}"
+    
+    def apply_font_formatting(paragraph, text):
+        """Áp dụng font Times New Roman, cỡ 13 cho text"""
+        paragraph.text = text
+        for run in paragraph.runs:
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(13)
+    
+    def apply_font_to_cell(cell, text):
+        """Áp dụng font Times New Roman, cỡ 13 cho ô trong bảng"""
+        cell.text = text
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = 'Times New Roman'
+                run.font.size = Pt(13)
+
+
+    
+    # Debug: In ra tất cả paragraphs để xem cấu trúc template
+    print("Debug: Tìm kiếm các trường trong template...")
+    for i, paragraph in enumerate(doc.paragraphs):
+        if paragraph.text.strip():
+            print(f"Paragraph {i}: '{paragraph.text}'")
+            # Kiểm tra các pattern cụ thể
+            if "Kính gửi" in paragraph.text:
+                print(f"  -> Found 'Kính gửi' pattern")
+            if "Họ, chữ đệm và tên" in paragraph.text:
+                print(f"  -> Found 'Họ tên' pattern")
+            if "Ngày, tháng, năm sinh" in paragraph.text:
+                print(f"  -> Found 'Ngày sinh' pattern")
+            if "Số điện thoại" in paragraph.text:
+                print(f"  -> Found 'SĐT' pattern")
+            if "chủ hộ" in paragraph.text:
+                print(f"  -> Found 'Chủ hộ' pattern")
+            if "Nội dung đề nghị" in paragraph.text:
+                print(f"  -> Found 'Nội dung đề nghị' pattern")
+    
+    # Thay thế thông tin trong các đoạn văn
+    replacements_made = 0
+    
+    # Lấy nội dung đề nghị trước để sử dụng cho các trường khác
+    noi_dung = get_field_value("noi_dung_de_nghi")
+    
+    # Lưu index của paragraph chứa "Nội dung đề nghị"
+    noi_dung_paragraph_idx = -1
+    
+    for i, paragraph in enumerate(doc.paragraphs):
+        original_text = paragraph.text
         
-        new_text = f"2. Ngày, tháng, năm sinh: {day}/{month}/{year} 3. Giới tính: {gioi_tinh}"
-        ngay_sinh_element.replace_with(new_text)
-        replacements_made += 1
-        print(f"Filled 'Ngày sinh': {day}/{month}/{year}, Giới tính: {gioi_tinh}")
-    
-    # 4. Điền số định danh cá nhân vào các ô - với fallback từ CCCD
-    id_boxes = soup.find_all("div", class_="id-box")
-    so_dinh_danh = get_field_value("so_dinh_danh", "idCode") or get_field_value("so_cccd", "idCode")
-    if so_dinh_danh and len(id_boxes) >= 12:
-        so_dinh_danh = str(so_dinh_danh).replace(" ", "").replace("-", "")
-        for i, digit in enumerate(so_dinh_danh[:12]):
-            if i < len(id_boxes):
-                id_boxes[i].string = digit
+        # Kính gửi - pattern đơn giản
+        if "Kính gửi(1):" in original_text:
+            co_quan_tiep_nhan = get_field_value("co_quan_tiep_nhan")
+            if co_quan_tiep_nhan:
+                apply_font_formatting(paragraph, f"Kính gửi(1): {co_quan_tiep_nhan}")
                 replacements_made += 1
-        print(f"Filled 'Số định danh': {so_dinh_danh}")
-    
-    # 5. Điền số điện thoại - tìm với dấu chấm chính xác
-    sdt_element = soup.find(string=lambda text: text and "5. Số điện thoại liên hệ: ..............." in text)
-    sdt = get_field_value("dien_thoai") or get_field_value("so_dien_thoai")
-    if sdt_element and sdt:
-        new_text = sdt_element.replace("...............", sdt)
-        sdt_element.replace_with(new_text)
-        replacements_made += 1
-        print(f"Filled 'SĐT': {sdt}")
-    
-    # 6. Điền email - tìm exact text
-    email_element = soup.find(string="6. Email:")
-    email = get_field_value("email")
-    if email_element and email:
-        new_text = f"6. Email: {email}"
-        email_element.replace_with(new_text)
-        replacements_made += 1
-        print(f"Filled 'Email': {email}")
-    
-    # 6. Điền thông tin chủ hộ - với fallback
-    chu_ho_element = soup.find(string=lambda text: text and "7. Họ, chữ đệm và tên chủ hộ:" in text and "8. Mối quan hệ với chủ hộ:" in text)
-    if chu_ho_element:
-        chu_ho = get_field_value("chu_ho") or get_field_value("ho_ten_chu_ho") or get_field_value("ho_ten", "personName")  # Multiple fallbacks
-        quan_he = get_field_value("quan_he_chu_ho") or get_field_value("moi_quan_he_chu_ho", "") or "Chủ hộ"  # Default to "Chủ hộ"
-        new_text = f"7. Họ, chữ đệm và tên chủ hộ: {chu_ho} 8. Mối quan hệ với chủ hộ: {quan_he}"
-        chu_ho_element.replace_with(new_text)
-        replacements_made += 1
-        print(f"Filled 'Chủ hộ': {chu_ho}, Quan hệ: {quan_he}")
-    
-    # 7. Điền số định danh chủ hộ vào các ô thứ 2
-    so_dinh_danh_chu_ho = get_field_value("dinh_danh_chu_ho") or get_field_value("so_dinh_danh_chu_ho")
-    if so_dinh_danh_chu_ho and len(id_boxes) >= 24:
-        dinh_danh_chu_ho = str(so_dinh_danh_chu_ho).replace(" ", "").replace("-", "")
-        for i, digit in enumerate(dinh_danh_chu_ho[:12]):
-            if i + 12 < len(id_boxes):
-                id_boxes[i + 12].string = digit
+                print(f"Filled 'Kính gửi': {co_quan_tiep_nhan}")
+        
+        # Họ, chữ đệm và tên - pattern đơn giản
+        if "1. Họ, chữ đệm và tên:" in original_text:
+            ho_ten = get_field_value("ho_ten", "personName")
+            if ho_ten:
+                apply_font_formatting(paragraph, f"1. Họ, chữ đệm và tên: {ho_ten}")
                 replacements_made += 1
-        print(f"Filled 'Số định danh chủ hộ': {so_dinh_danh_chu_ho}")
-    
-    # 10. Điền nội dung đề nghị
-    noi_dung_de_nghi = get_field_value("noi_dung_de_nghi")
-    if noi_dung_de_nghi:
-        noi_dung_elements = soup.find_all(string=lambda text: text and "10. Nội dung đề nghị" in text)
-        for noi_dung_element in noi_dung_elements:
-            parent = noi_dung_element.parent
-            if parent:
-                # Thêm nội dung sau element hiện tại
-                new_text = f"{noi_dung_element}   {noi_dung_de_nghi}"
-                noi_dung_element.replace_with(new_text)
+                print(f"Filled 'Họ tên': {ho_ten}")
+        
+        # Ngày sinh và giới tính - pattern đơn giản
+        if "2. Ngày, tháng, năm sinh:" in original_text:
+            ngay_sinh = get_field_value("ngay_sinh", "dateOfBirth")
+            gioi_tinh = get_field_value("gioi_tinh", "gender")
+            if ngay_sinh:
+                day, month, year = parse_date(ngay_sinh)
+                date_str = f"{day} / {month} / {year}"
+                apply_font_formatting(paragraph, f"2. Ngày, tháng, năm sinh: {date_str}       3. Giới tính: {gioi_tinh}")
                 replacements_made += 1
-                print(f"Filled 'Nội dung đề nghị': {noi_dung_de_nghi}")
+                print(f"Filled 'Ngày sinh': {date_str}, Giới tính: {gioi_tinh}")
+        
+        # Số điện thoại và Email - pattern đơn giản
+        if "5. Số điện thoại liên hệ:" in original_text:
+            sdt = get_field_value("dien_thoai") or get_field_value("so_dien_thoai")
+            email = get_field_value("email")
+            if sdt:
+                apply_font_formatting(paragraph, f"5. Số điện thoại liên hệ: {sdt}    6. Email: {email}")
+                replacements_made += 1
+                print(f"Filled 'SĐT': {sdt}, Email: {email}")
+        
+        # Chủ hộ và mối quan hệ - pattern đơn giản
+        if "7. Họ, chữ đệm và tên chủ hộ:" in original_text:
+            chu_ho = get_field_value("chu_ho") or get_field_value("ho_ten_chu_ho")
+            quan_he = get_field_value("quan_he_chu_ho") or get_field_value("moi_quan_he_chu_ho", "") or "Chủ hộ"
+            if chu_ho:
+                apply_font_formatting(paragraph, f"7. Họ, chữ đệm và tên chủ hộ: {chu_ho}    8. Mối quan hệ với chủ hộ: {quan_he}")
+                replacements_made += 1
+                print(f"Filled 'Chủ hộ': {chu_ho}, Quan hệ: {quan_he}")
+        
+        # Đánh dấu paragraph chứa "Nội dung đề nghị" - pattern mở rộng
+        if "10. Nội dung đề nghị" in original_text:
+            noi_dung_paragraph_idx = i
+            print(f"🎯 Found 'Nội dung đề nghị' at paragraph {i}: '{original_text}'")
+    
+    # Xử lý "Nội dung đề nghị" sau khi tìm được paragraph
+    if noi_dung_paragraph_idx != -1 and noi_dung:
+        import re
+        
+        # Tìm tất cả các paragraph liên quan (bao gồm cả dòng chấm)
+        paragraphs_to_process = [noi_dung_paragraph_idx]
+        
+        # Tìm các paragraph tiếp theo chỉ chứa dấu chấm hoặc trống
+        for idx in range(noi_dung_paragraph_idx + 1, min(noi_dung_paragraph_idx + 10, len(doc.paragraphs))):
+            if idx >= len(doc.paragraphs):
                 break
+                
+            next_paragraph = doc.paragraphs[idx]
+            next_text = next_paragraph.text.strip()
+            
+            # Kiểm tra xem có phải dòng chấm không
+            meaningful_content = re.sub(r'[.…\-_\s]', '', next_text)
+            if (next_text == '' or 
+                len(meaningful_content) == 0 or
+                re.match(r'^[ .…\-_\s]*$', next_text)):
+                
+                paragraphs_to_process.append(idx)
+                print(f"✓ Added to processing list: paragraph {idx}: '{next_text}'")
+            else:
+                print(f"✗ Found content, stopping: paragraph {idx}: '{next_text}'")
+                break
+        
+        # Xử lý paragraph đầu tiên (chứa tiêu đề)
+        main_paragraph = doc.paragraphs[noi_dung_paragraph_idx]
+        original_text = main_paragraph.text
+        
+        # Làm sạch text gốc
+        cleaned_text = re.sub(r'[.…\-_]+', '', original_text)
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        if not cleaned_text.endswith(':'):
+            cleaned_text += ':'
+        
+        # Xóa nội dung paragraph chính và điền lại
+        main_paragraph.clear()
+        run = main_paragraph.add_run(f"{cleaned_text} {noi_dung}")
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(13)
+        
+        # Xóa hoặc làm rỗng các paragraph chấm thừa
+        removed_count = 0
+        for idx in paragraphs_to_process[1:]:  # Bỏ qua paragraph đầu tiên
+            if idx < len(doc.paragraphs):
+                try:
+                    p = doc.paragraphs[idx]
+                    # Thử method 1: Clear và set text rỗng
+                    p.clear()
+                    p.text = ""
+                    
+                    # Thử method 2: Xóa hoàn toàn nếu có thể
+                    try:
+                        p_element = p._element
+                        parent = p_element.getparent()
+                        if parent is not None:
+                            parent.remove(p_element)
+                            print(f"✅ Completely removed paragraph at index {idx}")
+                        else:
+                            print(f"✅ Cleared content of paragraph at index {idx}")
+                    except:
+                        print(f"✅ Cleared content of paragraph at index {idx}")
+                    
+                    removed_count += 1
+                except Exception as e:
+                    print(f"❌ Warning: Could not process paragraph at index {idx}: {e}")
+        
+        replacements_made += 1
+        print(f"✅ Filled 'Nội dung đề nghị': {noi_dung}")
+        print(f"📊 Processed {removed_count} empty/dotted paragraphs")
+        print(f"🔍 Original: '{original_text}'")
+        print(f"🔍 Cleaned: '{cleaned_text} {noi_dung}'")
     
+    print(f"Total paragraph replacements made: {replacements_made}")
+    
+    # Xử lý các bảng
+    print(f"🔍 Processing {len(doc.tables)} tables...")
+    for table_idx, table in enumerate(doc.tables):
+        print(f"📋 Table {table_idx}: Rows: {len(table.rows)}, Columns: {len(table.rows[0].cells) if table.rows else 0}")
+        
+        if table.rows and table.rows[0].cells:
+            first_cell_text = table.rows[0].cells[0].text.strip()
+            print(f"   First cell text: '{first_cell_text}'")
+            
+            # Bảng "4. Số định danh cá nhân"
+            if "4. Số định danh cá nhân:" in first_cell_text:
+                so_dinh_danh = get_field_value("so_dinh_danh", "idCode") or get_field_value("so_cccd", "idCode")
+                print(f"✅ Found ID table. ID: '{so_dinh_danh}', Cells: {len(table.rows[0].cells)}")
+                if so_dinh_danh and len(table.rows[0].cells) >= 13:
+                    id_digits = split_id_number(so_dinh_danh)
+                    print(f"🔢 ID digits: {id_digits}")
+                    for i in range(12):
+                        if i + 1 < len(table.rows[0].cells):
+                            apply_font_to_cell(table.rows[0].cells[i + 1], id_digits[i])
+                            print(f"   Cell {i+1}: '{id_digits[i]}'")
+                else:
+                    print(f"❌ Cannot fill ID: so_dinh_danh='{so_dinh_danh}', cells={len(table.rows[0].cells)}")
+            
+            # Bảng "9. Số định danh cá nhân của chủ hộ"
+            elif "9. Số định danh cá nhân của chủ hộ:" in first_cell_text:
+                so_dinh_danh_chu_ho = get_field_value("dinh_danh_chu_ho") or get_field_value("so_dinh_danh_chu_ho")
+                print(f"✅ Found Head ID table. Head ID: '{so_dinh_danh_chu_ho}'")
+                if so_dinh_danh_chu_ho and len(table.rows[0].cells) >= 13:
+                    id_digits = split_id_number(so_dinh_danh_chu_ho)
+                    print(f"🔢 Head ID digits: {id_digits}")
+                    for i in range(12):
+                        if i + 1 < len(table.rows[0].cells):
+                            apply_font_to_cell(table.rows[0].cells[i + 1], id_digits[i])
+                else:
+                    print(f"❌ Cannot fill Head ID: so_dinh_danh_chu_ho='{so_dinh_danh_chu_ho}'")
+        
+            # Bảng "11. Những thành viên trong hộ gia đình cùng thay đổi"
+            elif first_cell_text == "TT":
+                print(f"✅ Found family members table")
+                # Xóa các hàng hiện có (trừ hàng tiêu đề)
+                original_rows = len(table.rows)
+                while len(table.rows) > 1:
+                    table._element.remove(table.rows[-1]._element)
+                print(f"🗑️ Removed {original_rows - 1} existing rows")
+                
+                # Thêm hàng mới cho từng thành viên
+                members = form_data.get("thanh_vien_gia_dinh") or form_data.get("thanh_vien_ho_gia_dinh") or form_data.get("thanh_vien_cung_thay_doi")
+                print(f"👥 Found {len(members) if members else 0} family members to add")
+                if members and isinstance(members, list):
+                    for i, member in enumerate(members, 1):
+                        row = table.add_row()
+                        if len(row.cells) >= 6:
+                            apply_font_to_cell(row.cells[0], str(i))  # Số thứ tự
+                            apply_font_to_cell(row.cells[1], member.get('ho_ten', ''))
+                            apply_font_to_cell(row.cells[2], member.get('ngay_sinh', ''))
+                            apply_font_to_cell(row.cells[3], member.get('gioi_tinh', ''))
+                            apply_font_to_cell(row.cells[4], member.get('so_dinh_danh', ''))
+                            apply_font_to_cell(row.cells[5], member.get('moi_quan_he', member.get('quan_he', '')))
+                            print(f"   Row {i}: {member.get('ho_ten', '')}")
+                else:
+                    print(f"ℹ️ No family members data to fill")
+            
+            # Bảng chữ ký chủ sở hữu
+            elif "Họ và tên chủ sở hữu" in first_cell_text or "chủ sở hữu" in first_cell_text.lower():
+                print(f"✅ Found owner signature table")
+                chu_so_huu = get_field_value("chu_so_huu_ho_ten")
+                chu_so_huu_id = get_field_value("chu_so_huu_dinh_danh")
+                if chu_so_huu:
+                    # Tìm và điền thông tin chủ sở hữu
+                    for row in table.rows:
+                        for cell_idx, cell in enumerate(row.cells):
+                            if "Họ và tên:" in cell.text:
+                                cell.text = f"Họ và tên: {chu_so_huu}"
+                                apply_font_to_cell(cell, f"Họ và tên: {chu_so_huu}")
+                            elif "Số định danh cá nhân:" in cell.text and chu_so_huu_id:
+                                cell.text = f"Số định danh cá nhân: {chu_so_huu_id}"
+                                apply_font_to_cell(cell, f"Số định danh cá nhân: {chu_so_huu_id}")
+                    print(f"📝 Filled owner info: {chu_so_huu}")
+            
+            # Bảng chữ ký cha/mẹ/người giám hộ
+            elif "cha/mẹ" in first_cell_text.lower() or "giám hộ" in first_cell_text.lower():
+                print(f"✅ Found guardian signature table")
+                giam_ho = get_field_value("giam_ho_ho_ten")
+                giam_ho_id = get_field_value("giam_ho_dinh_danh")
+                if giam_ho:
+                    # Tìm và điền thông tin người giám hộ
+                    for row in table.rows:
+                        for cell in row.cells:
+                            if "Họ và tên:" in cell.text:
+                                cell.text = f"Họ và tên: {giam_ho}"
+                                apply_font_to_cell(cell, f"Họ và tên: {giam_ho}")
+                            elif "Số định danh cá nhân:" in cell.text and giam_ho_id:
+                                cell.text = f"Số định danh cá nhân: {giam_ho_id}"
+                                apply_font_to_cell(cell, f"Số định danh cá nhân: {giam_ho_id}")
+                    print(f"📝 Filled guardian info: {giam_ho}")
+            
+            # Bảng ý kiến và các bảng cuối - BỎ QUA, không xử lý
+            elif "Ý KIẾN CỦA CHỦ HỘ" in first_cell_text or "Ý KIẾN CỦA CHA" in first_cell_text or "YÊU CẦU" in first_cell_text:
+                print(f"⏭️ Skipped opinion/signature table: '{first_cell_text[:50]}...' (removed by request)")
+            else:
+                print(f"❓ Unknown table: '{first_cell_text[:50]}...'")
+                # Debug: In ra tất cả các cell của bảng không nhận diện được
+                if len(table.rows) > 0:
+                    print(f"   Debug - Table structure:")
+                    for row_idx, row in enumerate(table.rows[:3]):  # Chỉ xem 3 hàng đầu
+                        for cell_idx, cell in enumerate(row.cells[:4]):  # Chỉ xem 4 cột đầu
+                            cell_text = cell.text.strip()[:30]  # Chỉ lấy 30 ký tự đầu
+                            print(f"     Row {row_idx}, Cell {cell_idx}: '{cell_text}'")
+        else:
+            print(f"❌ Table {table_idx}: No rows or cells")
+    
+    # Lưu file vào bytes
+    output = io.BytesIO()
+    doc.save(output)
+    output.seek(0)
+    return output.getvalue()
 
-    
-    # 9. Điền thông tin thành viên gia đình vào bảng
-    members = form_data.get("thanh_vien_gia_dinh") or form_data.get("thanh_vien_ho_gia_dinh") or form_data.get("thanh_vien_cung_thay_doi")
-    print(f"🔍 Members data: {members}")
-    if members:
-        table_rows = soup.select("table tbody tr")
-        print(f"🔍 Found {len(table_rows)} table rows")
-        if isinstance(members, list):
-            for i, member in enumerate(members[:len(table_rows)]):
-                print(f"🔍 Processing member {i}: {member}")
-                if i < len(table_rows):
-                    cells = table_rows[i].find_all("td")
-                    if len(cells) >= 6:
-                        # STT
-                        cells[0].string = str(i + 1)
-                        # Họ tên
-                        cells[1].string = member.get("ho_ten", "")
-                        # Ngày sinh
-                        cells[2].string = member.get("ngay_sinh", "")
-                        # Giới tính
-                        cells[3].string = member.get("gioi_tinh", "")
-                        # Số định danh
-                        cells[4].string = member.get("so_dinh_danh", "")
-                        # Quan hệ với chủ hộ
-                        cells[5].string = member.get("moi_quan_he", member.get("quan_he", ""))
-                        replacements_made += 6
-            print(f"Filled {len(members)} thành viên gia đình")
-    
-    # 10. Điền thông tin chữ ký (nếu có)
-    signature_sections = soup.find_all("div", class_="signature-box")
-    
-    # Ý kiến chủ hộ
-    if len(signature_sections) > 0 and form_data.get("chu_ho_ho_ten"):
-        ho_ten_input = signature_sections[0].find(string=lambda text: text and "Họ và tên:" in text)
-        if ho_ten_input:
-            new_text = ho_ten_input.replace("........................", form_data["chu_ho_ho_ten"])
-            ho_ten_input.replace_with(new_text)
-            replacements_made += 1
-        
-        if form_data.get("chu_ho_dinh_danh"):
-            dinh_danh_input = signature_sections[0].find(string=lambda text: text and "Số định danh cá nhân:" in text)
-            if dinh_danh_input:
-                new_text = dinh_danh_input.replace("........................", form_data["chu_ho_dinh_danh"])
-                dinh_danh_input.replace_with(new_text)
-                replacements_made += 1
-    
-    # Ý kiến chủ sở hữu chỗ ở
-    if len(signature_sections) > 1 and form_data.get("chu_so_huu_ho_ten"):
-        ho_ten_input = signature_sections[1].find(string=lambda text: text and "Họ và tên:" in text)
-        if ho_ten_input:
-            new_text = ho_ten_input.replace("........................", form_data["chu_so_huu_ho_ten"])
-            ho_ten_input.replace_with(new_text)
-            replacements_made += 1
-        
-        if form_data.get("chu_so_huu_dinh_danh"):
-            dinh_danh_input = signature_sections[1].find(string=lambda text: text and "Số định danh cá nhân:" in text)
-            if dinh_danh_input:
-                new_text = dinh_danh_input.replace("........................", form_data["chu_so_huu_dinh_danh"])
-                dinh_danh_input.replace_with(new_text)
-                replacements_made += 1
-    
-    # Ý kiến cha, mẹ hoặc người giám hộ
-    if len(signature_sections) > 2 and form_data.get("giam_ho_ho_ten"):
-        ho_ten_input = signature_sections[2].find(string=lambda text: text and "Họ và tên:" in text)
-        if ho_ten_input:
-            new_text = ho_ten_input.replace("........................", form_data["giam_ho_ho_ten"])
-            ho_ten_input.replace_with(new_text)
-            replacements_made += 1
-        
-        if form_data.get("giam_ho_dinh_danh"):
-            dinh_danh_input = signature_sections[2].find(string=lambda text: text and "Số định danh cá nhân:" in text)
-            if dinh_danh_input:
-                new_text = dinh_danh_input.replace("........................", form_data["giam_ho_dinh_danh"])
-                dinh_danh_input.replace_with(new_text)
-                replacements_made += 1
-    
-    # Điền số định danh cá nhân vào các ô riêng biệt
-    so_dinh_danh = get_field_value("so_dinh_danh", "personalNumber")
-    if so_dinh_danh:
-        # Tìm div chứa các ô số định danh (4. Số định danh cá nhân)
-        id_boxes_container = soup.find('div', class_='id-boxes')
-        if id_boxes_container:
-            id_boxes = id_boxes_container.find_all('div', class_='id-box')
-            so_dinh_danh_str = str(so_dinh_danh).zfill(12)  # Đảm bảo 12 chữ số
-            for i, box in enumerate(id_boxes):
-                if i < len(so_dinh_danh_str):
-                    box.string = so_dinh_danh_str[i]
-            replacements_made += 1
-            print(f"Filled 'Số định danh cá nhân': {so_dinh_danh}")
-    
-    # Điền số định danh chủ hộ vào các ô riêng biệt
-    so_dinh_danh_chu_ho = get_field_value("so_dinh_danh_chu_ho")
-    if so_dinh_danh_chu_ho:
-        # Tìm div thứ 2 chứa các ô số định danh (9. Số định danh cá nhân của chủ hộ)
-        all_id_containers = soup.find_all('div', class_='id-boxes')
-        if len(all_id_containers) > 1:
-            chu_ho_container = all_id_containers[1]
-            id_boxes = chu_ho_container.find_all('div', class_='id-box')
-            so_dinh_danh_str = str(so_dinh_danh_chu_ho).zfill(12)
-            for i, box in enumerate(id_boxes):
-                if i < len(so_dinh_danh_str):
-                    box.string = so_dinh_danh_str[i]
-            replacements_made += 1
-            print(f"Filled 'Số định danh chủ hộ': {so_dinh_danh_chu_ho}")
-    
-    # Điền bảng thành viên hộ gia đình
-    thanh_vien_list = form_data.get("thanh_vien_ho_gia_dinh", [])
-    if thanh_vien_list and isinstance(thanh_vien_list, list):
-        table = soup.find('table')
-        if table:
-            tbody = table.find('tbody')
-            if tbody:
-                rows = tbody.find_all('tr')
-                for i, thanh_vien in enumerate(thanh_vien_list):
-                    if i < len(rows):
-                        row = rows[i]
-                        cells = row.find_all('td')
-                        if len(cells) >= 6:
-                            # STT
-                            cells[0].string = str(i + 1)
-                            # Họ tên
-                            cells[1].string = thanh_vien.get('ho_ten', '')
-                            # Ngày sinh
-                            cells[2].string = thanh_vien.get('ngay_sinh', '')
-                            # Giới tính
-                            cells[3].string = thanh_vien.get('gioi_tinh', '')
-                            # Số định danh
-                            cells[4].string = thanh_vien.get('so_dinh_danh', '')
-                            # Mối quan hệ
-                            cells[5].string = thanh_vien.get('moi_quan_he', '')
-                replacements_made += len(thanh_vien_list)
-                print(f"Filled {len(thanh_vien_list)} thành viên hộ gia đình")
-    
-    print(f"Total replacements made: {replacements_made}")
-    
-    # Debug: Save HTML to file for inspection
-    with open("debug_filled_template.html", "w", encoding="utf-8") as f:
-        f.write(str(soup))
-    print("🔍 Debug: HTML template saved to debug_filled_template.html")
-    
-    return str(soup)
+def convert_docx_to_pdf(docx_bytes: bytes) -> bytes:
+    """
+    Convert DOCX to PDF
+    """
+    try:
+        # Sử dụng python-docx2pdf hoặc weasyprint để convert
+        # Tạm thời trả về DOCX bytes nếu không có converter
+        return docx_bytes
+    except Exception as e:
+        print(f"PDF conversion failed: {e}")
+        return docx_bytes
 
-def convert_html_to_format(html_content: str, format_type: str) -> bytes:
-    """
-    Convert HTML to PDF or DOCX with proper formatting
-    """
-    if format_type == "pdf":
-        # Convert HTML to PDF using weasyprint (better CSS support)
+@router.post("/preview")
+async def preview_ct01_document(request: dict):
+    """Endpoint để tạo file DOCX cho preview"""
+    try:
+        form_data = request.get("formData", {})
+        cccd_data = request.get("cccdData", {})
+        
+        # Tải template từ Supabase
+        docx_url = "https://rjrqtogyzmgyqvryxfyk.supabase.co/storage/v1/object/public/bieumau/ct01.docx"
+        response = requests.get(docx_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Không thể tải file template từ Supabase")
+        
+        # Tạo file tạm để lưu DOCX
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_file:
+            temp_file.write(response.content)
+            temp_file_path = temp_file.name
+        
         try:
-            from weasyprint import HTML, CSS
-            from weasyprint.text.fonts import FontConfiguration
-            
-            # Create CSS for better Vietnamese font support
-            css_content = """
-                @page {
-                    size: A4;
-                    margin: 2cm;
-                }
-                body {
-                    font-family: 'Times New Roman', serif;
-                    font-size: 14px;
-                    line-height: 1.4;
-                }
-                .header {
-                    text-align: center;
-                    margin-bottom: 20px;
-                }
-                .header h1 {
-                    font-size: 16px;
-                    font-weight: bold;
-                    margin: 5px 0;
-                }
-                .form-title {
-                    font-size: 16px;
-                    font-weight: bold;
-                    text-align: center;
-                    margin: 20px 0;
-                }
-                .form-field {
-                    margin: 10px 0;
-                    display: flex;
-                    align-items: baseline;
-                }
-                .form-field label {
-                    min-width: 200px;
-                    display: inline-block;
-                }
-                .id-boxes {
-                    display: inline-flex;
-                    gap: 2px;
-                    margin-left: 10px;
-                }
-                .id-box {
-                    width: 22px;
-                    height: 22px;
-                    border: 1px solid #000;
-                    text-align: center;
-                    display: inline-block;
-                    line-height: 22px;
-                    font-size: 12px;
-                    font-weight: bold;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 15px 0;
-                    font-size: 12px;
-                }
-                table, th, td {
-                    border: 1px solid #000;
-                }
-                th, td {
-                    padding: 5px;
-                    text-align: center;
-                    vertical-align: middle;
-                    border: 1px solid #000;
-                }
-                th {
-                    background-color: #f0f0f0;
-                    font-weight: bold;
-                    font-size: 12px;
-                }
-                td {
-                    font-size: 11px;
-                }
-                .signature-section {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-top: 30px;
-                    font-size: 12px;
-                }
-                .signature-box {
-                    width: 23%;
-                    border: 1px solid #000;
-                    padding: 10px;
-                    min-height: 120px;
-                    text-align: center;
-                }
-                .signature-title {
-                    font-weight: bold;
-                    margin-bottom: 10px;
-                }
-                .notes {
-                    margin-top: 30px;
-                    font-size: 12px;
-                }
-                .notes h3 {
-                    font-weight: bold;
-                    margin-bottom: 10px;
-                }
-                .note-item {
-                    margin: 10px 0;
-                    text-align: justify;
-                }
-            """
-            
-            font_config = FontConfiguration()
-            css = CSS(string=css_content, font_config=font_config)
-            
-            # Generate PDF
-            html_doc = HTML(string=html_content)
-            pdf_bytes = html_doc.write_pdf(stylesheets=[css], font_config=font_config)
-            return pdf_bytes
-            
-        except ImportError as e:
-            print(f"weasyprint not available: {e}")
-            # Fallback to simple HTML export
-            return html_content.encode('utf-8')
-        except Exception as e:
-            print(f"PDF conversion failed: {e}")
-            return html_content.encode('utf-8')
-    
-    elif format_type == "docx":
-        # Convert HTML to DOCX with proper formatting
-        try:
-            # Skip html2docx and use python-docx directly for better format control
-            print("Using python-docx for better format control")
-            raise ImportError("Skip html2docx")
-            
-        except ImportError:
-            print("html2docx not available, using python-docx fallback")
-            # Fallback to basic docx creation
-            try:
-                from docx import Document
-                from docx.shared import Inches, Pt
-                from docx.enum.text import WD_ALIGN_PARAGRAPH
-                from bs4 import BeautifulSoup
-                
-                doc = Document()
-                
-                # Set page margins
-                section = doc.sections[0]
-                section.top_margin = Inches(0.8)
-                section.bottom_margin = Inches(0.8)
-                section.left_margin = Inches(0.8)
-                section.right_margin = Inches(0.8)
-                
-                # Parse HTML and extract structured content
-                soup = BeautifulSoup(html_content, 'html.parser')
-                
-                # Add header
-                header_elements = soup.find_all(class_='header')
-                for header in header_elements:
-                    for element in header.find_all(['h1', 'p', 'div']):
-                        if element.get_text().strip():
-                            p = doc.add_paragraph(element.get_text().strip())
-                            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                            if element.name == 'h1':
-                                for run in p.runs:
-                                    run.font.size = Pt(16)
-                                    run.bold = True
-                
-                # Add form title
-                form_title = soup.find(class_='form-title')
-                if form_title:
-                    p = doc.add_paragraph(form_title.get_text().strip())
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for run in p.runs:
-                        run.font.size = Pt(16)
-                        run.bold = True
-                
-                # Add form fields - xử lý riêng từng field để giữ format
-                form_fields = soup.find_all(class_='form-field')
-                for field in form_fields:
-                    field_text = field.get_text().strip()
-                    
-                    # Xử lý riêng cho số định danh (các ô riêng biệt)
-                    if "Số định danh cá nhân" in field_text and "của chủ hộ" not in field_text:
-                        # Tách text và số định danh
-                        if ":" in field_text:
-                            label_part = field_text.split(":")[0] + ":"
-                            
-                            # Tìm các ô số định danh
-                            id_boxes = field.find_all('div', class_='id-box')
-                            if id_boxes:
-                                # Tạo paragraph với label và table cùng hàng
-                                p = doc.add_paragraph()
-                                run = p.add_run(label_part + " ")
-                                run.font.size = Pt(12)
-                                run.font.name = 'Times New Roman'
-                                
-                                # Tạo các ô cho từng chữ số
-                                digits = []
-                                for box in id_boxes:
-                                    if box.string and box.string.strip():
-                                        digits.append(box.string.strip())
-                                
-                                if digits:
-                                    # Tạo table inline cho các ô số
-                                    from docx.table import Table
-                                    from docx.oxml import OxmlElement
-                                    from docx.oxml.ns import qn
-                                    
-                                    # Tạo table nhỏ inline
-                                    table = doc.add_table(rows=1, cols=len(digits))
-                                    table.style = 'Table Grid'
-                                    
-                                    # Set table width nhỏ để không chiếm hết dòng
-                                    table.width = Inches(len(digits) * 0.25)  # 0.25 inch per digit
-                                    
-                                    for i, digit in enumerate(digits):
-                                        cell = table.cell(0, i)
-                                        cell.text = digit
-                                        cell.width = Inches(0.25)
-                                        
-                                        # Format cell
-                                        for paragraph in cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.font.size = Pt(10)
-                                                run.font.name = 'Times New Roman'
-                                                run.bold = True
-                                else:
-                                    # Tạo ô trống
-                                    table = doc.add_table(rows=1, cols=12)
-                                    table.style = 'Table Grid'
-                                    table.width = Inches(3.0)
-                                    
-                                    for i in range(12):
-                                        cell = table.cell(0, i)
-                                        cell.text = ""
-                                        cell.width = Inches(0.25)
-                                        
-                                        # Format cell
-                                        for paragraph in cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.font.size = Pt(10)
-                                                run.font.name = 'Times New Roman'
-                            else:
-                                # Nếu không tìm thấy id-box, giữ nguyên text
-                                p = doc.add_paragraph(field_text)
-                                for run in p.runs:
-                                    run.font.size = Pt(12)
-                                    run.font.name = 'Times New Roman'
-                    
-                    # Xử lý riêng cho số định danh chủ hộ
-                    elif "Số định danh cá nhân của chủ hộ" in field_text:
-                        # Tách text và số định danh
-                        if ":" in field_text:
-                            label_part = field_text.split(":")[0] + ":"
-                            
-                            # Tìm các ô số định danh
-                            id_boxes = field.find_all('div', class_='id-box')
-                            if id_boxes:
-                                # Tạo paragraph với label và table cùng hàng
-                                p = doc.add_paragraph()
-                                run = p.add_run(label_part + " ")
-                                run.font.size = Pt(12)
-                                run.font.name = 'Times New Roman'
-                                
-                                # Tạo các ô cho từng chữ số
-                                digits = []
-                                for box in id_boxes:
-                                    if box.string and box.string.strip():
-                                        digits.append(box.string.strip())
-                                
-                                if digits:
-                                    # Tạo table inline cho các ô số
-                                    from docx.table import Table
-                                    from docx.oxml import OxmlElement
-                                    from docx.oxml.ns import qn
-                                    
-                                    # Tạo table nhỏ inline
-                                    table = doc.add_table(rows=1, cols=len(digits))
-                                    table.style = 'Table Grid'
-                                    
-                                    # Set table width nhỏ để không chiếm hết dòng
-                                    table.width = Inches(len(digits) * 0.25)  # 0.25 inch per digit
-                                    
-                                    for i, digit in enumerate(digits):
-                                        cell = table.cell(0, i)
-                                        cell.text = digit
-                                        cell.width = Inches(0.25)
-                                        
-                                        # Format cell
-                                        for paragraph in cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.font.size = Pt(10)
-                                                run.font.name = 'Times New Roman'
-                                                run.bold = True
-                                else:
-                                    # Tạo ô trống
-                                    table = doc.add_table(rows=1, cols=12)
-                                    table.style = 'Table Grid'
-                                    table.width = Inches(3.0)
-                                    
-                                    for i in range(12):
-                                        cell = table.cell(0, i)
-                                        cell.text = ""
-                                        cell.width = Inches(0.25)
-                                        
-                                        # Format cell
-                                        for paragraph in cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.font.size = Pt(10)
-                                                run.font.name = 'Times New Roman'
-                            else:
-                                # Nếu không tìm thấy id-box, giữ nguyên text
-                                p = doc.add_paragraph(field_text)
-                                for run in p.runs:
-                                    run.font.size = Pt(12)
-                                    run.font.name = 'Times New Roman'
-                    
-                    else:
-                        # Add paragraph with proper formatting for other fields
-                        p = doc.add_paragraph(field_text)
-                        for run in p.runs:
-                            run.font.size = Pt(12)
-                            run.font.name = 'Times New Roman'
-                
-                # Add tables with proper formatting
-                tables = soup.find_all('table')
-                print(f"🔍 Found {len(tables)} tables in HTML")
-                for html_table in tables:
-                    rows = html_table.find_all('tr')
-                    print(f"🔍 Table has {len(rows)} rows")
-                    if rows:
-                        # Calculate max columns, ignoring rowspan/colspan for now
-                        max_cols = 6  # Fixed for CT01 table structure
-                        
-                        # Create table with proper dimensions
-                        docx_table = doc.add_table(rows=len(rows), cols=max_cols)
-                        docx_table.style = 'Table Grid'
-                        
-                        # Set table properties for better appearance
-                        docx_table.autofit = False
-                        
-                        # Set table width to fit page
-                        from docx.shared import Inches
-                        docx_table.width = Inches(6.5)
-                        
-                        for i, row in enumerate(rows):
-                            cells = row.find_all(['th', 'td'])
-                            docx_row = docx_table.rows[i]
-                            
-                            for j, cell in enumerate(cells):
-                                if j < len(docx_row.cells):
-                                    docx_cell = docx_row.cells[j]
-                                    cell_text = cell.get_text().strip()
-                                    
-                                    # Clear existing content and add new
-                                    docx_cell.text = cell_text
-                                    
-                                    # Format header cells
-                                    if cell.name == 'th':
-                                        # Make header bold and center-aligned
-                                        for paragraph in docx_cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.bold = True
-                                                run.font.size = Pt(10)
-                                    else:
-                                        # Format data cells
-                                        for paragraph in docx_cell.paragraphs:
-                                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            for run in paragraph.runs:
-                                                run.font.size = Pt(10)
-                        
-                        # Add spacing after table
-                        doc.add_paragraph('')
-                
-                # Add signature section
-                signature_section = soup.find(class_='signature-section')
-                if signature_section:
-                    doc.add_paragraph('')  # Space
-                    
-                    # Tạo table cho 4 ô ý kiến
-                    signature_table = doc.add_table(rows=1, cols=4)
-                    signature_table.style = 'Table Grid'
-                    signature_table.width = Inches(6.5)
-                    
-                    signature_boxes = signature_section.find_all(class_='signature-box')
-                    for i, box in enumerate(signature_boxes):
-                        if i < 4:  # Chỉ xử lý 4 ô
-                            cell = signature_table.cell(0, i)
-                            cell.text = box.get_text().strip()
-                            
-                            # Format cho từng paragraph trong cell
-                            for paragraph in cell.paragraphs:
-                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                for run in paragraph.runs:
-                                    run.font.size = Pt(9)
-                                    run.font.name = 'Times New Roman'
-                                    if "Ý KIẾN" in run.text or "NGƯỜI KÊ KHAI" in run.text:
-                                        run.bold = True
-                
-                # Add notes
-                notes = soup.find(class_='notes')
-                if notes:
-                    doc.add_paragraph('')  # Space
-                    for note_item in notes.find_all(class_='note-item'):
-                        doc.add_paragraph(note_item.get_text().strip())
-                
-                output = io.BytesIO()
-                doc.save(output)
-                output.seek(0)
-                return output.getvalue()
-            except Exception as e:
-                print(f"DOCX conversion failed: {e}")
-                return html_content.encode('utf-8')
-        except Exception as e:
-            print(f"DOCX conversion failed: {e}")
-            return html_content.encode('utf-8')
-    
-    else:
-        return html_content.encode('utf-8')
+            # Tạo file DOCX đã điền sẵn
+            docx_content = fill_docx_template_with_data(temp_file_path, form_data, cccd_data)
+        finally:
+            # Xóa file tạm
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+        
+        # Lưu file tạm thời cho preview
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
+            tmp_file.write(docx_content)
+            tmp_path = tmp_file.name
+        
+        # Trả về đường dẫn file tương đối
+        file_id = os.path.basename(tmp_path)
+        return {"file_path": file_id, "filename": "CT01-preview.docx"}
+        
+    except Exception as e:
+        print(f"❌ Error in preview_ct01_document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/preview/{file_id}")
+async def serve_preview_file(file_id: str):
+    """Serve file DOCX cho preview"""
+    try:
+        import os
+        import tempfile
+        
+        # Tìm file trong thư mục temp
+        temp_dir = tempfile.gettempdir()
+        full_path = os.path.join(temp_dir, file_id)
+        
+        if not os.path.exists(full_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        with open(full_path, "rb") as f:
+            content = f.read()
+        
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "inline; filename=CT01-preview.docx"}
+        )
+        
+    except Exception as e:
+        print(f"❌ Error serving preview file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

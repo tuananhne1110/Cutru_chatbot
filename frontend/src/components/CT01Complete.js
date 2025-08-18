@@ -21,7 +21,7 @@ function CT01Complete({ formData, cccdData, onDownload, onSubmitOnline, isLoadin
           Bước 4: Hoàn tất và tải về
         </h3>
         <p className="text-gray-600">
-          Biểu mẫu {template?.code || 'CT01'} đã được tạo thành công. Bạn có thể tải về hoặc nộp trực tuyến.
+          Biểu mẫu {template?.code || 'CT01'} đã được tạo thành công từ file DOCX gốc. Bạn có thể tải về hoặc nộp trực tuyến.
         </p>
       </div>
 
@@ -39,20 +39,20 @@ function CT01Complete({ formData, cccdData, onDownload, onSubmitOnline, isLoadin
 
       <div className="flex justify-center space-x-4 mb-8 flex-wrap">
         <button
-          onClick={() => handleDownload('pdf')}
-          disabled={isLoading}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-        >
-          <span>📄</span>
-          <span>Tải xuống PDF</span>
-        </button>
-        <button
           onClick={() => handleDownload('docx')}
           disabled={isLoading}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
         >
           <span>📝</span>
-          <span>Tải xuống Word</span>
+          <span>Tải xuống DOCX</span>
+        </button>
+        <button
+          onClick={() => handleDownload('pdf')}
+          disabled={isLoading}
+          className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+        >
+          <span>📄</span>
+          <span>Tải xuống PDF</span>
         </button>
         <button
           onClick={handleSubmitOnline}
@@ -94,7 +94,11 @@ function CT01Complete({ formData, cccdData, onDownload, onSubmitOnline, isLoadin
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Số CCCD:</span>
-            <span className="text-gray-800">{formData.so_cccd || 'N/A'}</span>
+            <span className="text-gray-800">{formData.so_dinh_danh || formData.so_cccd || 'N/A'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Template:</span>
+            <span className="text-gray-800">DOCX từ Supabase</span>
           </div>
         </div>
       </div>
