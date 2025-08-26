@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import FloatingChatbot from './components/FloatingChatbot';
 import CT01TestPage from './components/CT01TestPage';
 import useChatStream from './hooks/useChatStream';
 import CT01Modal from './components/CT01Modal';
+import VoiceCallPage from './pages/VoiceCallPage';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Use relative paths for proxy to work correctly
+const API_BASE_URL = '';
 
 function App() {
+  const navigate = useNavigate();
   const [sessionId, setSessionId] = useState(() => {
     // Kiểm tra localStorage trước
     const savedSessionId = localStorage.getItem('chatSessionId');
@@ -20,14 +24,18 @@ function App() {
     messages,
     setMessages,
     inputMessage,
-    setInputMessage,
+    setInputMessage: originalSetInputMessage,
     isLoading,
-    sendMessage,
+    sendMessage: originalSendMessage,
     showSources,
     toggleSources,
     loadChatHistory,
     clearChatHistory
   } = useChatStream(sessionId);
+
+  const setInputMessage = originalSetInputMessage;
+
+  const sendMessage = originalSendMessage;
 
   useEffect(() => {
     // Tạo session mới khi component mount nếu chưa có
@@ -93,6 +101,10 @@ function App() {
     setIsCT01ModalOpen(false);
   };
 
+  const openVoiceChat = () => {
+    navigate('/voice-call');
+  };
+
   // Check for CT01 related messages and open modal
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
@@ -114,34 +126,41 @@ function App() {
   }, [messages]);
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* CT01 Test Page Content */}
-      <CT01TestPage />
-      
-      {/* Floating Chatbot */}
-      <FloatingChatbot
-        messages={messages}
-        onSend={sendMessage}
-        isLoading={isLoading}
-        sessionId={sessionId}
-        showSources={showSources}
-        toggleSources={toggleSources}
-        inputMessage={inputMessage}
-        setInputMessage={setInputMessage}
-        handleKeyPress={handleKeyPress}
-        loadChatHistory={loadChatHistory}
-        clearChatHistory={clearChatHistory}
-        createNewSession={createNewSession}
-        openCT01Modal={openCT01Modal}
-      />
+    <Routes>
+      <Route path="/" element={
+        <div className="min-h-screen bg-white">
+          {/* CT01 Test Page Content */}
+          <CT01TestPage />
+          
+          {/* Floating Chatbot */}
+          <FloatingChatbot
+            key="floating-chatbot-fixed" // FIXED KEY TO PREVENT RE-MOUNTING
+            messages={messages}
+            onSend={sendMessage}
+            isLoading={isLoading}
+            sessionId={sessionId}
+            showSources={showSources}
+            toggleSources={toggleSources}
+            inputMessage={inputMessage}
+            setInputMessage={setInputMessage}
+            handleKeyPress={handleKeyPress}
+            loadChatHistory={loadChatHistory}
+            clearChatHistory={clearChatHistory}
+            createNewSession={createNewSession}
+            openCT01Modal={openCT01Modal}
+            openVoiceChat={openVoiceChat}
+          />
 
-      {/* CT01 Modal */}
-      <CT01Modal
-        isOpen={isCT01ModalOpen}
-        onClose={closeCT01Modal}
-        onChatMessage={handleChatMessage}
-      />
-    </div>
+          {/* CT01 Modal */}
+          <CT01Modal
+            isOpen={isCT01ModalOpen}
+            onClose={closeCT01Modal}
+            onChatMessage={handleChatMessage}
+          />
+        </div>
+      } />
+      <Route path="/voice-call" element={<VoiceCallPage />} />
+    </Routes>
   );
 }
 

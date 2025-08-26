@@ -1,0 +1,372 @@
+.voice-call-page {
+  width: 100%;
+  height: 100vh;
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  display: flex;
+  flex-direction: column;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Header */
+.call-header {
+  display: flex;
+  align-items: center;
+  padding: 20px 15px 15px 15px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.back-button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 5px 10px;
+  margin-right: 15px;
+}
+
+.call-title {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  padding-right: 44px; /* Compensate for back button */
+}
+
+/* Call Controls */
+.call-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.call-timer {
+  background: #ffa726;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stop-call-button {
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.stop-call-button:hover {
+  background: #d32f2f;
+  transform: scale(1.05);
+}
+
+/* Messages */
+.call-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.call-message {
+  margin-bottom: 20px;
+  padding: 15px;
+  border-radius: 12px;
+  animation: messageAppear 0.3s ease-out;
+}
+
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.call-message.ai {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid #2196f3;
+  margin-right: 40px;
+}
+
+.call-message.user {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid #e0e0e0;
+  margin-left: 40px;
+}
+
+.call-message.user.active {
+  border-color: #4caf50;
+  background: rgba(76, 175, 80, 0.2);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.call-message.processing {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: #ffc107;
+}
+
+.message-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.message-avatar {
+  font-size: 20px;
+  padding: 2px;
+}
+
+.message-info {
+  flex: 1;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.message-timestamp {
+  font-family: 'Courier New', monospace;
+  color: #b0bec5;
+}
+
+.message-confidence {
+  font-family: 'Courier New', monospace;
+  color: #81c784;
+  margin-top: 2px;
+}
+
+.message-content {
+  font-size: 16px;
+  line-height: 1.5;
+  margin-left: 30px;
+}
+
+.message-content.processing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: thinking 1.4s ease-in-out infinite both;
+}
+
+.thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+.thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes thinking {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Voice Control */
+.voice-control {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.control-status {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.status-text {
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  display: inline-block;
+  font-weight: 500;
+}
+
+.status-text.ready {
+  background: rgba(76, 175, 80, 0.3);
+  color: #a8e6cf;
+}
+
+.status-text.listening {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ffcdd2;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-text.processing {
+  background: rgba(255, 193, 7, 0.3);
+  color: #fff3cd;
+}
+
+.status-text.playing {
+  background: rgba(33, 150, 243, 0.3);
+  color: #bbdefb;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.voice-button-container {
+  display: flex;
+  justify-content: center;
+}
+
+.voice-control-button {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e3c72;
+  font-size: 2.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.voice-control-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+}
+
+.voice-control-button:active {
+  transform: scale(0.95);
+}
+
+.voice-control-button.recording {
+  background: #f44336;
+  color: white;
+  animation: recordingPulse 1s ease-in-out infinite;
+}
+
+@keyframes recordingPulse {
+  0%, 100% {
+    box-shadow: 0 10px 20px rgba(244, 67, 54, 0.4);
+  }
+  50% {
+    box-shadow: 0 10px 40px rgba(244, 67, 54, 0.8);
+  }
+}
+
+.voice-control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Scrollbar styling */
+.call-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.call-messages::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.call-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.call-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 600px) {
+  .call-header {
+    padding: 15px 10px;
+  }
+  
+  .call-title {
+    font-size: 16px;
+    padding-right: 34px;
+  }
+  
+  .call-controls {
+    padding: 10px 15px;
+  }
+  
+  .call-timer {
+    font-size: 14px;
+    padding: 6px 12px;
+  }
+  
+  .stop-call-button {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .call-messages {
+    padding: 15px;
+  }
+  
+  .call-message {
+    padding: 12px;
+  }
+  
+  .call-message.ai {
+    margin-right: 20px;
+  }
+  
+  .call-message.user {
+    margin-left: 20px;
+  }
+  
+  .message-content {
+    font-size: 15px;
+    margin-left: 25px;
+  }
+  
+  .voice-control-button {
+    width: 70px;
+    height: 70px;
+    font-size: 2rem;
+  }
+}

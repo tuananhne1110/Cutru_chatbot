@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 
-function MessageInput({ inputMessage, setInputMessage, handleKeyPress, onSend, isLoading, onVoiceInput, isVoiceStreaming }) {
+function MessageInput({ inputMessage, setInputMessage, handleKeyPress, onSend, isLoading, onVoiceChat }) {
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -26,33 +26,17 @@ function MessageInput({ inputMessage, setInputMessage, handleKeyPress, onSend, i
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Nhập câu hỏi..."
-          className={`w-full px-4 py-2 border border-gray-300 rounded-full text-sm outline-none transition-colors focus:border-blue-500 ${
-            isVoiceStreaming ? 'border-green-400 bg-green-50' : ''
-          }`}
+          className="w-full px-4 py-2 border border-gray-300 rounded-full text-sm outline-none transition-colors focus:border-blue-500"
           disabled={isLoading}
         />
-        {/* Voice streaming indicator */}
-        {isVoiceStreaming && (
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            <div className="flex space-x-1">
-              <div className="w-1 h-3 bg-green-500 rounded-full animate-bounce"></div>
-              <div className="w-1 h-3 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-1 h-3 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            </div>
-          </div>
-        )}
       </div>
       
-      {/* Voice Input Button */}
+      {/* Voice Chat Button */}
       <button
-        onClick={onVoiceInput}
+        onClick={onVoiceChat}
         disabled={isLoading}
-        className={`border-none w-9 h-9 rounded-full cursor-pointer flex items-center justify-center text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all ${
-          isVoiceStreaming 
-            ? 'bg-green-500 text-white animate-pulse' 
-            : 'bg-gradient-to-br from-green-500 to-green-600 text-white hover:scale-105'
-        }`}
-        title="Nhập bằng giọng nói"
+        className="bg-gradient-to-br from-purple-500 to-blue-600 text-white border-none w-9 h-9 rounded-full cursor-pointer flex items-center justify-center text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-all"
+        title="Mở Voice Chat"
       >
         🎤
       </button>

@@ -2,10 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import CT01Modal from './CT01Modal';
-import VoiceRecorder from './VoiceRecorder';
-import VoiceSupportInfo from './VoiceSupportInfo';
-import VoiceTypingIndicator from './VoiceTypingIndicator';
-import useVoiceToText from '../hooks/useVoiceToText';
 
 function FloatingChatbot({ 
   messages, 
@@ -20,42 +16,21 @@ function FloatingChatbot({
   loadChatHistory, 
   clearChatHistory, 
   createNewSession,
-  openCT01Modal
+  openCT01Modal,
+  openVoiceChat
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(true);
   const [isCT01ModalOpen, setIsCT01ModalOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Voice-to-text hook
-  const {
-    isRecording,
-    isLoading: voiceLoading,
-    error: voiceError,
-    currentText: voiceText,
-    toggleRecording,
-    stopRecording
-  } = useVoiceToText((text) => {
-    setInputMessage(text);
-  });
-
-  // Auto-send message when recording stops
-  useEffect(() => {
-    if (!isRecording && voiceText && voiceText.trim()) {
-      // Small delay to ensure text is properly set
-      const timer = setTimeout(() => {
-        if (inputMessage && inputMessage.trim()) {
-          onSend();
-        }
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isRecording, voiceText, inputMessage, onSend]);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+
+
+
 
   const toggleChat = () => {
     if (isMinimized) {
@@ -143,6 +118,12 @@ function FloatingChatbot({
                   >
                     ❓ Hướng dẫn
                   </button>
+                  <button 
+                    onClick={openVoiceChat}
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 border-none px-3 py-1 rounded-full text-xs cursor-pointer transition-all duration-200 hover:from-purple-600 hover:to-blue-600 text-white font-medium"
+                  >
+                    🎤 Voice Chat
+                  </button>
                 </div>
               </div>
             )}
@@ -167,31 +148,16 @@ function FloatingChatbot({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Voice Typing Indicator */}
-          <VoiceTypingIndicator 
-            isStreaming={isRecording && voiceText && voiceText.trim()} 
-            text={voiceText} 
-          />
-
-          {/* Input Area - y hệt như UI.html */}
+          {/* Input Area */}
           <div className="p-4 bg-white border-t border-gray-200">
-            <VoiceRecorder
-              isRecording={isRecording}
-              currentText={voiceText}
-              error={voiceError}
-              onStop={stopRecording}
-            />
-            
             <MessageInput
               inputMessage={inputMessage}
               setInputMessage={setInputMessage}
-              handleKeyPress={handleKeyPress}
               onSend={onSend}
-              isLoading={isLoading || voiceLoading}
-              onVoiceInput={toggleRecording}
-              isVoiceStreaming={isRecording && voiceText && voiceText.trim()}
+              handleKeyPress={handleKeyPress}
+              isLoading={isLoading}
+              onVoiceChat={openVoiceChat}
             />
-            <VoiceSupportInfo />
           </div>
         </div>
       )}

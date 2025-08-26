@@ -83,10 +83,27 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
       { id: botMessageId, type: 'bot', content: '', timestamp: new Date().toISOString() }
     ]);
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_URL}/chat/stream`, {
+      const speak = async (text) => {
+        try {
+          if (!text || !text.trim()) return;
+          const res = await fetch('/voice/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          if (!res.ok) throw new Error('TTS failed');
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          await audio.play();
+        } catch (e) {
+          console.warn('TTS playback error:', e);
+        }
+      };
+
+      const response = await fetch(`/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Accept-Charset': 'utf-8' },
         body: JSON.stringify({
           question: inputMessage,
           session_id: sessionId,
@@ -157,6 +174,32 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
           }
         }
       }
+      // After stream completes, speak the final accumulated result
+      try {
+        const finalText = (result || '').trim();
+        console.log('Final text for TTS:', finalText);
+        if (finalText) {
+          console.log('Attempting TTS...');
+          const res = await fetch('/voice/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: finalText })
+          });
+          console.log('TTS response status:', res.status);
+          if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            console.log('Playing TTS audio...');
+            await audio.play();
+            console.log('TTS audio played successfully');
+          } else {
+            console.error('TTS failed with status:', res.status);
+          }
+        }
+      } catch (e) {
+        console.error('TTS error:', e);
+      }
     } catch (error) {
       console.error('Error in chat stream:', error);
       setMessages(prev => prev.map(msg =>
@@ -168,6 +211,27 @@ export default function useChatStream(sessionId, confirmDialog = window.confirm)
       ));
     } finally {
       setIsLoading(false);
+      // Attempt TTS of the last bot message
+      try {
+        const lastBot = [...messages].reverse().find(m => m.type === 'bot');
+        const content = lastBot?.content || '';
+        if (content && content.trim()) {
+          await (async () => {
+            try {
+              const res = await fetch('/voice/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: content })
+              });
+              if (!res.ok) return;
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const audio = new Audio(url);
+              await audio.play();
+            } catch (_) {}
+          })();
+        }
+      } catch (_) {}
     }
   };
 
