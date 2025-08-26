@@ -113,12 +113,11 @@ async def generate_answer(state: ChatState) -> ChatState:
         formatted_docs.append(doc_dict)
     
     # Tạo prompt trực tiếp từ prompt_templates
-    prompt_template = prompt_templates.get_prompt_by_category()
     formatted_context = prompt_templates.format_context_by_category(formatted_docs)
-    prompt = prompt_template.format(
-        context=formatted_context,
-        question=question
-    )
+    prompt = prompt_templates.get_prompt_by_category(formatted_context)
+    
+    # Thêm câu hỏi vào cuối prompt
+    prompt += f"{question}"
     
     system_prompt = prompt_templates.get_prompt_by_category()
     state["prompt"] = prompt

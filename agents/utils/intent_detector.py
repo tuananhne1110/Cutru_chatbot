@@ -8,6 +8,7 @@ import boto3
 from langfuse.decorators import observe
 import yaml
 from agents.prompt.prompt_templates import prompt_templates
+from utils.text_utils import fix_utf8_encoding, normalize_vietnamese_text
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,12 @@ class IntentDetector:
     
     @observe()
     def detect_intent(self, query: str, trace_id: str = None) -> List[Tuple[IntentType, str]]:
+        # Fix UTF-8 encoding issues first
+        original_query = query
+        query = normalize_vietnamese_text(query)
+        if query != original_query:
+            logger.info(f"[IntentDetector] Fixed encoding: '{original_query}' -> '{query}'")
+        
         logger.info(f"[IntentDetector] Processing query: '{query}'")
         
         messages = [{"role": "user", "content": [{"text": query}]}]
@@ -179,6 +186,8 @@ class IntentDetector:
                 if "toolUse" in item:
                     tool_name = item['toolUse']['name']
                     new_query = item['toolUse']['input'].get('query', query)
+                    # Fix encoding for new_query as well
+                    new_query = normalize_vietnamese_text(new_query)
                     intent = MAPPING_IntentType.get(tool_name, IntentType.GENERAL)
                     logger.info(f"[IntentDetector] Found toolUse - tool_name: {tool_name}, intent: {intent}, query: '{new_query}'")
                     list_intent_type.append((intent, new_query))
@@ -192,6 +201,8 @@ class IntentDetector:
                         logger.info(f"[IntentDetector] Decoded JSON tool results: {tool_results}")
                         for tool_result in tool_results:
                             new_query = tool_result['parameters'].get('query', query)
+                            # Fix encoding for new_query from JSON as well
+                            new_query = normalize_vietnamese_text(new_query)
                             tool_name = tool_result.get('name')
                             intent = MAPPING_IntentType.get(tool_name, IntentType.GENERAL)
                             logger.info(f"[IntentDetector] From JSON - tool_name: {tool_name}, intent: {intent}, query: '{new_query}'")

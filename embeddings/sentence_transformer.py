@@ -2,6 +2,7 @@ from typing import List, Union
 from sentence_transformers import SentenceTransformer
 from .base import BaseEmbedding
 from config.configs import EmbeddingModelConfig
+from utils.text_utils import normalize_vietnamese_text
 
 class SentenceTransformerEmbedding(BaseEmbedding):
     """SentenceTransformer embedding implementation"""
@@ -40,13 +41,14 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         if not self.model:
             raise RuntimeError("Model chưa được khởi tạo")
         try:
-
-        
+            # Fix UTF-8 encoding for input texts
             if isinstance(texts, str):
-                result = self.model.encode(texts.lower(), normalize_embeddings=normalize, prompt_name=self.config.prompt_name)
+                normalized_text = normalize_vietnamese_text(texts)
+                result = self.model.encode(normalized_text.lower(), normalize_embeddings=normalize, prompt_name=self.config.prompt_name)
                 return result.tolist()
             else:
-                results = self.model.encode([t.lower() for t in texts], normalize_embeddings=normalize, prompt_name=self.config.prompt_name)
+                normalized_texts = [normalize_vietnamese_text(t) for t in texts]
+                results = self.model.encode([t.lower() for t in normalized_texts], normalize_embeddings=normalize, prompt_name=self.config.prompt_name)
                 return [r.tolist() for r in results]
             
 

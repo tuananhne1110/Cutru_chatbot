@@ -3,6 +3,7 @@ import boto3
 import json
 from .base import BaseEmbedding
 from config.configs import EmbeddingModelConfig
+from utils.text_utils import normalize_vietnamese_text
 
 
 class BedrockEmbedding(BaseEmbedding):
@@ -34,8 +35,10 @@ class BedrockEmbedding(BaseEmbedding):
         embeddings = []
         for text in inputs:
             try:
+                # Fix UTF-8 encoding before sending to Bedrock
+                normalized_text = normalize_vietnamese_text(text)
                 payload = {
-                    "inputText": text,
+                    "inputText": normalized_text,
                     "dimensions": self.config.output_dimension,
                     "normalize": normalize,
                     "embeddingTypes": ["float"]

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import StreamingResponse
 import json
 import logging
@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional
 import sys
 import os
+from io import BytesIO
 
 # Add the current directory to Python path to import stream_speech
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,59 +22,44 @@ router = APIRouter(prefix="/voice", tags=["Voice to Text"])
 current_recognizer: Optional[SpeechRecognizer] = None
 
 @router.post("/start-recording")
-async def start_recording():
+async def start_recording(request: Request):
     """Bắt đầu recording voice-to-text"""
     global current_recognizer
     
     try:
         if current_recognizer:
-            # Clean up existing recognizer
-            current_recognizer.stop()
-        
-        # Always use preloaded model - it should be loaded at startup
-        # Initialize voice model from settings
-        voice_config = settings.voice_config
-        if voice_config and voice_config.preload_model:
-            logger.info("Using preloaded voice model")
-            from config.voice_init import initialize_voice_model
-            current_recognizer = initialize_voice_model({
-                "model_name": voice_config.model_name,
-                "device": voice_config.device,
-                "batch_size": voice_config.batch_size,
-                "num_workers": voice_config.num_workers,
-                "preload_model": voice_config.preload_model
-            })
-            
-            # Reset the model state for new recording
-            current_recognizer.reset_recording()
-            
-            # Start actual recording in background
-            logger.info("Starting audio recording...")
-            import threading
-            recording_thread = threading.Thread(
-                target=current_recognizer.start_recording,
-                kwargs={"return_text": False},
-                daemon=True
-            )
-            recording_thread.start()
-        else:
-            # If no preloaded model, create a new one (this shouldn't happen)
-            logger.warning("No preloaded model found, creating new one...")
+            # Stop any ongoing run but keep the preloaded model
             try:
-                current_recognizer = SpeechRecognizer(
-                    model_name=voice_config.model_name if voice_config else "vinai/PhoWhisper-medium",
-                    device=voice_config.device if voice_config else None,
-                    batch_size=voice_config.batch_size if voice_config else 8,
-                    num_workers=voice_config.num_workers if voice_config else 1
-                )
-            except Exception as audio_error:
-                logger.error(f"Audio device error: {audio_error}")
-                raise HTTPException(
-                    status_code=500, 
-                    detail="Không thể khởi tạo microphone. Vui lòng kiểm tra quyền truy cập microphone và thử lại."
-                )
-        
-        return {"status": "success", "message": "Recording started"}
+                current_recognizer.stop()
+            except Exception:
+                pass
+
+        # Reuse preloaded recognizer from main
+        # Prefer app.state to avoid duplicate module import issues
+        voice_components = getattr(request.app.state, "voice_components", None)
+        if not voice_components or not voice_components.get("stt"):
+            logger.error("Preloaded STT not found in voice_components")
+            raise HTTPException(status_code=503, detail="STT model not initialized at startup")
+
+        current_recognizer = voice_components["stt"]
+
+        # Reset lightweight state and start recording without reloading model
+        try:
+            current_recognizer.reset_recording()
+        except Exception:
+            logger.warning("Failed to reset recording state; continuing")
+
+        # Start actual recording in background
+        logger.info("Starting audio recording with preloaded STT...")
+        import threading
+        recording_thread = threading.Thread(
+            target=current_recognizer.start_recording,
+            kwargs={"return_text": False},
+            daemon=True
+        )
+        recording_thread.start()
+
+        return {"status": "success", "message": "Recording started (preloaded)"}
         
     except HTTPException:
         raise
@@ -142,10 +128,12 @@ async def get_current_text():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/model-info")
-async def get_model_info():
+async def get_model_info(request: Request):
     """Lấy thông tin về voice model configuration"""
     try:
         voice_config = settings.voice_config
+        voice_components = getattr(request.app.state, "voice_components", None)
+        stt_loaded = bool(voice_components and voice_components.get("stt"))
         return {
                     "model_info": {
             "model_name": voice_config.model_name if voice_config else "vinai/PhoWhisper-medium",
@@ -154,8 +142,86 @@ async def get_model_info():
             "num_workers": voice_config.num_workers if voice_config else 1,
             "preload_model": voice_config.preload_model if voice_config else False
         },
-        "preloaded": voice_config and voice_config.preload_model
+        "preloaded": bool(voice_config and voice_config.preload_model),
+        "ready": stt_loaded
         }
     except Exception as e:
         logger.error(f"Error getting model info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tts")
+async def synthesize_tts(payload: dict, request: Request):
+    """Synthesize speech for given text using preloaded TTS (gTTS by default).
+
+    Returns MP3 audio.
+    """
+    try:
+        text = (payload or {}).get("text", "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Missing 'text'")
+
+        # Use global voice components loaded at startup
+        voice_components = getattr(request.app.state, "voice_components", None)
+        if not voice_components or not voice_components.get("tts"):
+            raise HTTPException(status_code=503, detail="TTS not initialized")
+
+        tts = voice_components["tts"]
+
+        # Fast path for gTTS: generate MP3 directly
+        if getattr(tts, "engine_name", "") == "gtts":
+            try:
+                from gtts import gTTS  # type: ignore
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"gTTS unavailable: {e}")
+
+            mp3_buf = BytesIO()
+            lang = getattr(tts, "gtts_lang", "vi")
+            tld = getattr(tts, "gtts_tld", "com.vn")
+            slow = getattr(tts, "gtts_slow", False)
+            gTTS(text=text, lang=lang, tld=tld, slow=slow).write_to_fp(mp3_buf)
+            mp3_buf.seek(0)
+
+            return StreamingResponse(mp3_buf, media_type="audio/mpeg")
+
+        # Generic path via AudioProcessor queue
+        import threading
+        import asyncio as _asyncio
+        audio_queue: _asyncio.Queue = _asyncio.Queue()
+        stop_event = threading.Event()
+        audio_collected = BytesIO()
+        success_flag = {"done": False, "ok": False}
+
+        def run_synthesis():
+            ok = tts.synthesize(text, audio_queue, stop_event, generation_string="TTS")
+            success_flag["done"], success_flag["ok"] = True, ok
+
+        synth_thread = threading.Thread(target=run_synthesis, daemon=True)
+        synth_thread.start()
+
+        # Collect chunks while synthesis runs
+        try:
+            while not success_flag["done"] or not audio_queue.empty():
+                try:
+                    chunk = await _asyncio.wait_for(audio_queue.get(), timeout=0.5)
+                    if chunk:
+                        audio_collected.write(chunk)
+                except _asyncio.TimeoutError:
+                    # keep waiting until synthesis done
+                    if success_flag["done"] and audio_queue.empty():
+                        break
+                    continue
+        finally:
+            stop_event.set()
+
+        audio_collected.seek(0)
+        if audio_collected.getbuffer().nbytes == 0:
+            raise HTTPException(status_code=500, detail="No audio produced by TTS")
+
+        return StreamingResponse(audio_collected, media_type="audio/mpeg")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error synthesizing TTS: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -40,16 +40,10 @@ models:
 
   hugging_face:
     embedding_model_configs:
-      gte:
-        model_name: "Alibaba-NLP/gte-multilingual-base"
-        device: "cuda"
-        trust_remote_code: true
-        enabled: true
-        model_params: {}
       qwen:
         model_name: "Qwen/Qwen3-Embedding-0.6B"
         prompt_name: "query"
-        device: "cuda"
+        device: "cpu"
         enabled: true
         model_params: {}
 
@@ -61,7 +55,7 @@ models:
         model_params: {}
     
     voice_to_text_config:
-      model_name: "vinai/PhoWhisper-medium"
+      model_name: "vinai/PhoWhisper-small"
       batch_size: 8
       num_workers: 1
       device: null

@@ -9,7 +9,9 @@ import queue
 import time
 from concurrent.futures import ThreadPoolExecutor
 import gc
-from typing import Optional, Tuple
+import asyncio
+import logging
+from typing import Optional, Tuple, Callable
 from collections import deque
 
 try:
@@ -17,24 +19,66 @@ try:
 except Exception:
     scipy_resample_poly = None
 
+# Setup logging
+logger = logging.getLogger(__name__)
+
 class SpeechRecognizer:
+    """Modern Speech Recognition with async support and callback system.
+    
+    Integrates features from AudioInputProcessor for better real-time performance,
+    async audio processing, and comprehensive callback system.
+    """
+    
+    _RESAMPLE_RATIO = 3  # Resample ratio from 48kHz to 16kHz
+    
     def __init__(self, 
                  model_name: str = "vinai/PhoWhisper-medium",
                  device: Optional[int] = None,
                  batch_size: int = 16,
-                 num_workers: int = 2):
+                 num_workers: int = 2,
+                 language: str = "vi",
+                 realtime_callback: Optional[Callable[[str], None]] = None,
+                 recording_start_callback: Optional[Callable[[], None]] = None,
+                 silence_active_callback: Optional[Callable[[bool], None]] = None,
+                 pipeline_latency: float = 0.5):
         
         """
-        Khởi tạo SpeechRecognizer:
+        Khởi tạo SpeechRecognizer với async support:
         - Tải mô hình 
         - Thiết lập các hàng đợi và luồng xử lý
         - Bắt đầu luồng transcription
+        - Hỗ trợ callback system cho real-time processing
+        
+        Args:
+            model_name: Tên model Whisper
+            device: GPU device index (None để auto-detect)
+            batch_size: Kích thước batch cho xử lý
+            num_workers: Số worker threads
+            language: Ngôn ngữ cho transcription
+            realtime_callback: Callback cho kết quả real-time
+            recording_start_callback: Callback khi bắt đầu recording
+            silence_active_callback: Callback cho trạng thái silence
+            pipeline_latency: Độ trễ pipeline ước tính (giây)
         """
         
         # Xác định thiết bị dùng GPU nếu có
         self.device = device if device is not None else (0 if torch.cuda.is_available() else -1)
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.language = language
+        self.pipeline_latency = pipeline_latency
+        
+        # Callback system từ AudioInputProcessor
+        self.realtime_callback = realtime_callback
+        self.recording_start_callback = recording_start_callback
+        self.silence_active_callback = silence_active_callback
+        self.last_partial_text: Optional[str] = None
+        
+        # Async support
+        self.audio_async_queue: Optional[asyncio.Queue] = None
+        self._transcription_failed = False
+        self.transcription_task: Optional[asyncio.Task] = None
+        self.interrupted = False
         
         # Thiết bị ghi âm và samplerate hiện tại
         self.input_device: Optional[int] = None
@@ -56,7 +100,8 @@ class SpeechRecognizer:
         # Load model một lần duy nhất
         print("Đang tải model...")
         self._load_model_optimized(model_name)
-        print("Model đã được tải ")
+        print("Model đã được tải")
+        logger.info(f"Model {model_name} loaded successfully on device: {'GPU' if self.device >= 0 else 'CPU'}")
         
         # Khởi tạo bộ phát hiện giọng nói WebRTC (mode=2)
         self.vad = webrtcvad.Vad(2)
@@ -76,6 +121,9 @@ class SpeechRecognizer:
         self.transcribe_thread.start()
 
         self.text = ""  # Biến lưu kết quả phiên âm
+        
+        # Setup callbacks
+        self._setup_callbacks()
 
         # Tham số phân đoạn/gom gửi (giảm độ trễ)
         self.min_segment_sec = 2.0   # gom tối thiểu ~2s
@@ -86,10 +134,35 @@ class SpeechRecognizer:
         self.vad_ring_ms = 200
         self.vad_ring = deque(maxlen=int(max(1, self.vad_ring_ms / 30)))
 
-        # Prompt cho mô hình
-        self.initial_prompt = (
-            "Tiếng Việt. Chủ đề pháp luật, thủ tục hành chính Việt Nam. Viết có dấu, giữ dấu câu."
-        )
+        # Remove duplicate prompt (already set above)
+        logger.info("👂🚀 SpeechRecognizer with async support initialized.")
+    
+    def _setup_callbacks(self) -> None:
+        """Sets up internal callbacks for real-time transcription."""
+        def partial_transcript_callback(text: str) -> None:
+            """Handles partial transcription results."""
+            if text != self.last_partial_text:
+                self.last_partial_text = text
+                if self.realtime_callback:
+                    self.realtime_callback(text)
+
+        # Note: This would be set on an actual TranscriptionProcessor
+        # For now, we'll integrate it into the existing batch processing
+        
+    def _silence_active_callback_internal(self, is_active: bool) -> None:
+        """Internal callback relay for silence detection status."""
+        if self.silence_active_callback:
+            self.silence_active_callback(is_active)
+
+    def _on_recording_start_internal(self) -> None:
+        """Internal callback relay triggered when recording starts."""
+        if self.recording_start_callback:
+            self.recording_start_callback()
+    
+    def abort_generation(self) -> None:
+        """Signals to abort any ongoing generation process."""
+        logger.info("👂🛑 Aborting generation requested.")
+        self.interrupted = True
 
     def _select_input_device(self) -> Optional[int]:
         try:
@@ -137,8 +210,20 @@ class SpeechRecognizer:
             return 16000
 
     def _resample_to_16k(self, audio_chunk: np.ndarray, src_rate: int) -> np.ndarray:
+        """Resample audio to 16kHz using scipy for better quality or fallback to interpolation."""
         if src_rate == 16000 or len(audio_chunk) == 0:
             return audio_chunk.astype(np.float32)
+            
+        # Use scipy resample_poly for better quality if available
+        if scipy_resample_poly is not None and src_rate % 16000 == 0:
+            try:
+                ratio = src_rate // 16000
+                resampled = scipy_resample_poly(audio_chunk.astype(np.float32), 1, ratio)
+                return resampled.astype(np.float32)
+            except Exception as e:
+                logger.warning(f"Scipy resampling failed: {e}, falling back to interpolation")
+        
+        # Fallback to linear interpolation
         duration = len(audio_chunk) / float(src_rate)
         num_out = int(duration * 16000)
         if num_out <= 0:
@@ -147,6 +232,40 @@ class SpeechRecognizer:
         t_dst = np.linspace(0.0, duration, num=num_out, endpoint=False, dtype=np.float32)
         resampled = np.interp(t_dst, t_src, audio_chunk.astype(np.float32)).astype(np.float32)
         return resampled
+    
+    def process_audio_chunk(self, raw_bytes: bytes) -> np.ndarray:
+        """Process raw audio bytes with improved resampling from AudioInputProcessor.
+        
+        Converts raw audio bytes (int16) to a 16kHz numpy array.
+        Uses scipy resample_poly for better quality when available.
+        
+        Args:
+            raw_bytes: Raw audio data in int16 format.
+            
+        Returns:
+            Numpy array containing resampled audio at 16kHz.
+        """
+        raw_audio = np.frombuffer(raw_bytes, dtype=np.int16)
+        
+        if np.max(np.abs(raw_audio)) == 0:
+            # Calculate expected length after resampling for silence
+            expected_len = int(np.ceil(len(raw_audio) / self._RESAMPLE_RATIO))
+            return np.zeros(expected_len, dtype=np.float32)
+        
+        # Convert to float32 for resampling precision
+        audio_float32 = raw_audio.astype(np.float32) / 32768.0  # Normalize to [-1, 1]
+        
+        # Use improved resampling method
+        if scipy_resample_poly is not None:
+            try:
+                # Resample using scipy for better quality
+                resampled_float = scipy_resample_poly(audio_float32, 1, self._RESAMPLE_RATIO)
+                return resampled_float.astype(np.float32)
+            except Exception as e:
+                logger.warning(f"Scipy resampling failed: {e}, using fallback")
+        
+        # Fallback to the existing method
+        return self._resample_to_16k(audio_float32, 48000)  # Assume 48kHz input
         
     def _load_model_optimized(self, model_name: str):
         """
@@ -198,7 +317,7 @@ class SpeechRecognizer:
     # ----------------------------------------
     # Luồng xử lý audio: nhận từ queue → transcribe
     # ----------------------------------------
-    def _transcribe_worker(self, timeout = 0.1):
+    def _transcribe_worker(self, timeout=0.1):
         """
         Luồng riêng chạy nền để lấy audio từ queue và xử lý phiên âm theo batch.
         Dùng multithread để tăng throughput.
@@ -227,9 +346,9 @@ class SpeechRecognizer:
                         # Gửi batch audio để xử lý song song
                         future = self.executor.submit(self._transcribe_batch, batch_audio)
                         pending_futures.append(future)
-                        print(f"Batch submitted successfully")
+                        logger.debug(f"Batch of {len(batch_audio)} submitted successfully")
                     except Exception as e:
-                        print(f"Error submitting batch: {e}")
+                        logger.error(f"Error submitting batch: {e}")
                         # Process directly if executor is down
                         try:
                             results = self._transcribe_batch(batch_audio)
@@ -237,7 +356,7 @@ class SpeechRecognizer:
                                 if result and result.strip():
                                     self.result_queue.put(result)
                         except Exception as direct_error:
-                            print(f"Direct processing error: {direct_error}")
+                            logger.error(f"Direct processing error: {direct_error}")
                 
                 # Lấy kết quả từ các job đã hoàn thành
                 completed_futures = [f for f in pending_futures if f.done()]
@@ -248,11 +367,11 @@ class SpeechRecognizer:
                             if result and result.strip():
                                 self.result_queue.put(result)
                     except Exception as e:
-                        print(f"Transcription error: {e}", file=sys.stderr)
+                        logger.error(f"Transcription error: {e}")
                     pending_futures.remove(future)
                     
             except Exception as e:
-                print(f"Worker error: {e}", file=sys.stderr)
+                logger.error(f"Worker error: {e}")
                 time.sleep(0.1)
     # ----------------------------------------
     # Hàm xử lý một batch audio và trả kết quả
@@ -306,11 +425,14 @@ class SpeechRecognizer:
                 
                 text = transcription.strip()
                 if text:
-                    print(f"Transcribed: '{text}'")
+                    logger.info(f"Transcribed: '{text}'")
+                    # Trigger realtime callback for partial results
+                    if self.realtime_callback:
+                        self.realtime_callback(text)
                 results.append(text)
                 
         except Exception as e:
-            print(f"Batch transcription error: {e}", file=sys.stderr)
+            logger.error(f"Batch transcription error: {e}")
             results = [""] * len(batch_audio)
         
         # Lưu thời gian xử lý để theo dõi hiệu suất
@@ -322,6 +444,82 @@ class SpeechRecognizer:
             self.processing_times = self.processing_times[-100:]
             
         return results
+    
+    async def _run_transcription_loop_async(self) -> None:
+        """Async version of transcription loop for better integration."""
+        task_name = 'AsyncTranscriptionTask'
+        logger.info(f"👂▶️ Starting async transcription task ({task_name}).")
+        
+        while not self._transcription_failed and not self.interrupted:
+            try:
+                # Run transcription in thread pool to avoid blocking
+                await asyncio.to_thread(self._transcribe_worker, timeout=0.1)
+                await asyncio.sleep(0.01)  # Prevent tight loop
+            except asyncio.CancelledError:
+                logger.info(f"👂💫 Async transcription loop ({task_name}) cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"👂💥 Async transcription loop ({task_name}) error: {e}")
+                self._transcription_failed = True
+                break
+        
+        logger.info(f"👂⏹️ Async transcription task ({task_name}) finished.")
+    
+    async def process_chunk_queue_async(self, audio_queue: asyncio.Queue) -> None:
+        """Async version of audio chunk processing from AudioInputProcessor.
+        
+        Continuously processes audio chunks from an asyncio Queue.
+        Integrates with the existing transcription system.
+        
+        Args:
+            audio_queue: Asyncio queue containing audio data dictionaries.
+        """
+        logger.info("👂▶️ Starting async audio chunk processing loop.")
+        
+        while True:
+            try:
+                # Check if transcription failed
+                if self._transcription_failed:
+                    logger.error("👂🛑 Transcription failed. Stopping async audio processing.")
+                    break
+                
+                # Get audio data from async queue
+                audio_data = await audio_queue.get()
+                if audio_data is None:
+                    logger.info("👂🔌 Received termination signal for async audio processing.")
+                    break
+                
+                # Extract PCM data
+                pcm_data = audio_data.get("pcm")
+                if pcm_data is None:
+                    continue
+                
+                # Process audio chunk using the improved method
+                processed = self.process_audio_chunk(pcm_data)
+                if processed.size == 0:
+                    continue
+                
+                # Feed to regular queue for batch processing (bridge async to sync)
+                if not self.interrupted and not self._transcription_failed:
+                    try:
+                        # Convert back to the format expected by existing system
+                        self.audio_queue.put_nowait(processed)
+                    except queue.Full:
+                        # Drop oldest if queue full
+                        try:
+                            self.audio_queue.get_nowait()
+                            self.audio_queue.put_nowait(processed)
+                        except queue.Empty:
+                            pass
+            
+            except asyncio.CancelledError:
+                logger.info("👂💫 Async audio processing cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"👂💥 Async audio processing error: {e}")
+                continue
+        
+        logger.info("👂⏹️ Async audio chunk processing finished.")
     # ----------------------------------------
     # Phát hiện tiếng nói (VAD) kết hợp thông minh
     # ----------------------------------------
@@ -360,7 +558,7 @@ class SpeechRecognizer:
         Thực hiện VAD, lưu âm thanh vào buffer và xử lý khi có đủ dữ liệu.
         """
         if status:
-            print(f"Stream status: {status}", file=sys.stderr)
+            logger.warning(f"Stream status: {status}")
         
         # Lấy audio từ 1 kênh (mono)
         audio_chunk = indata[:, 0].copy()
@@ -380,12 +578,12 @@ class SpeechRecognizer:
             
         if self._frame_counter % 100 == 0:
             energy = np.mean(audio_chunk ** 2)
-            print(f"Audio frame {self._frame_counter}: energy={energy:.6f}, max={np.max(np.abs(audio_chunk)):.6f}")
+            logger.debug(f"Audio frame {self._frame_counter}: energy={energy:.6f}, max={np.max(np.abs(audio_chunk)):.6f}")
         
         # Debug: in ra tất cả audio frames để debug
         energy = np.mean(audio_chunk ** 2)
         if energy > 0.00001:  # Rất nhạy cảm
-            print(f"Audio detected: frame={self._frame_counter}, energy={energy:.6f}")
+            logger.debug(f"Audio detected: frame={self._frame_counter}, energy={energy:.6f}")
         
         # Kiểm tra xem có phải tiếng nói không
         is_speech = self._enhanced_vad(audio_chunk, 16000)
@@ -393,16 +591,21 @@ class SpeechRecognizer:
         if is_speech:
             self.buffer.append(audio_chunk)
             self.silence_counter = 0
-            print(f"Speech detected! Buffer size: {len(self.buffer)}")
+            logger.debug(f"Speech detected! Buffer size: {len(self.buffer)}")
+            # Trigger recording start callback if this is the first speech
+            if len(self.buffer) == 1:
+                self._on_recording_start_internal()
         elif self.buffer:  # Only count silence after speech
             self.silence_counter += 1
             if self.silence_counter <= 10:  # Add some silence after speech
                 self.buffer.append(audio_chunk)
             
-            # Quy tắc gom: tối thiểu 6s, tối đa 10s, overlap 2s
+            # Quy tắc gom: tối thiểu 2s, tối đa 3s, overlap 0.8s
             seg_sec = len(self.buffer) * 0.03
             if seg_sec >= self.min_segment_sec or len(self.buffer) >= int(self.max_segment_sec/0.03):
-                print(f"Processing audio segment: ~{seg_sec:.2f}s")
+                logger.info(f"Processing audio segment: ~{seg_sec:.2f}s")
+                # Trigger silence callback
+                self._silence_active_callback_internal(False)
                 full_chunk = np.concatenate(self.buffer)
                 
                 # Combine with previous audio for context
@@ -415,22 +618,30 @@ class SpeechRecognizer:
                 overlap_size = int(self.overlap_sec * 16000)
                 self.last_audio = full_chunk[-overlap_size:] if len(full_chunk) > overlap_size else full_chunk
                 
-                # Queue for async processing (non-blocking)
+                # Queue for async processing (non-blocking) with error recovery
                 try:
                     if len(combined) >= 16000:  # không gửi < 1s
                         self.audio_queue.put_nowait(combined)
-                        print(f"Audio queued for processing. Queue size: {self.audio_queue.qsize()}")
+                        logger.debug(f"Audio queued for processing. Queue size: {self.audio_queue.qsize()}")
                 except queue.Full:
-                    # Drop oldest item if queue is full
+                    # Drop oldest item if queue is full (recovery mechanism)
+                    logger.warning("Audio queue full, dropping oldest item")
                     try:
-                        self.audio_queue.get_nowait()
+                        dropped = self.audio_queue.get_nowait()
+                        logger.debug(f"Dropped audio chunk of length {len(dropped) if hasattr(dropped, '__len__') else 'unknown'}")
                         if len(combined) >= 16000:
                             self.audio_queue.put_nowait(combined)
                     except queue.Empty:
-                        pass
+                        logger.error("Queue reported full but get_nowait failed")
+                except Exception as e:
+                    logger.error(f"Unexpected error queuing audio: {e}")
                 
                 self.buffer.clear()
                 self.silence_counter = 0
+        else:
+            # Trigger silence callback when transitioning to silence
+            if len(self.buffer) > 0 and self.silence_counter == 1:
+                self._silence_active_callback_internal(True)
     
     def start_recording(self, fs: int = 16000, frame_duration: int = 30, return_text: bool = True):
         """
@@ -510,12 +721,12 @@ class SpeechRecognizer:
                 time.sleep(0.1)
                 
         except KeyboardInterrupt:
-            print("\nStopping recording...")
+            logger.info("\nStopping recording due to keyboard interrupt...")
         except Exception as e:
             # Thử fallback: không set device và/hoặc giảm latency
-            print(f"Stream error: {e}", file=sys.stderr)
+            logger.error(f"Stream error: {e}")
             try:
-                print("Retrying audio stream with fallback parameters...")
+                logger.info("Retrying audio stream with fallback parameters...")
                 stream = sd.InputStream(
                     callback=self.stream_callback,
                     samplerate=self.current_samplerate,
@@ -528,7 +739,7 @@ class SpeechRecognizer:
                 while not self.stop_flag.is_set():
                     time.sleep(0.1)
             except Exception as e2:
-                print(f"Fallback stream error: {e2}", file=sys.stderr)
+                logger.error(f"Fallback stream error: {e2}")
         finally:
             # Dừng stream
             try:
@@ -540,7 +751,7 @@ class SpeechRecognizer:
             
                          # Xử lý audio còn lại trong buffer ngay lập tức
             if self.buffer:
-                print(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
+                logger.info(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
                 full_chunk = np.concatenate(self.buffer)
                 
                 # Combine with previous audio for context
@@ -552,13 +763,13 @@ class SpeechRecognizer:
                 # Transcribe ngay lập tức nếu có đủ audio
                 if len(combined) >= 16000:  # ít nhất 1 giây
                     try:
-                        print("Transcribing remaining audio immediately...")
+                        logger.info("Transcribing remaining audio immediately...")
                         result = self._transcribe_batch([combined])
                         if result and result[0].strip():
                             self.text += result[0].strip() + " "
-                            print(f"Final transcription: {result[0]}")
+                            logger.info(f"Final transcription: {result[0]}")
                     except Exception as e:
-                        print(f"Error transcribing final audio: {e}")
+                        logger.error(f"Error transcribing final audio: {e}")
             
             # Dừng recording và cleanup
             self._cleanup()
@@ -578,41 +789,76 @@ class SpeechRecognizer:
             final_text = self.get_current_text()
             
             if return_text:
-                print(f"\n--- Final transcribed text ---")
-                print(f"'{final_text}'")
-                print(f"--- End of transcription ---")
+                logger.info(f"\n--- Final transcribed text ---")
+                logger.info(f"'{final_text}'")
+                logger.info(f"--- End of transcription ---")
                 return final_text
             else:
                 return None
     
     def _cleanup(self):
-        """Internal cleanup method"""
+        """Internal cleanup method with improved error handling"""
+        logger.info("👂🛑 Starting cleanup process...")
         self.stop_flag.set()
+        self.interrupted = True
         
         # Poison pill to stop worker
         try:
             self.audio_queue.put_nowait(None)
         except queue.Full:
-            pass
+            logger.warning("Could not send poison pill - queue full")
+        except Exception as e:
+            logger.error(f"Error sending poison pill: {e}")
         
-        # Wait for threads to finish
-        if self.transcribe_thread.is_alive():
-            self.transcribe_thread.join(timeout=2)
+        # Wait for threads to finish with timeout
+        if self.transcribe_thread and self.transcribe_thread.is_alive():
+            logger.info("Waiting for transcribe thread to finish...")
+            self.transcribe_thread.join(timeout=3)
+            if self.transcribe_thread.is_alive():
+                logger.warning("Transcribe thread did not finish within timeout")
         
-        self.executor.shutdown(wait=True)
+        # Shutdown executor with error handling
+        try:
+            self.executor.shutdown(wait=True)
+        except Exception as e:
+            logger.error(f"Error shutting down executor: {e}")
         
         # Cleanup GPU memory
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+            logger.info("👂✨ Memory cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during memory cleanup: {e}")
+    
+    def shutdown_async(self) -> None:
+        """Async-compatible shutdown method from AudioInputProcessor.
+        
+        Signals shutdown and cancels async tasks.
+        """
+        logger.info("👂🛑 Shutting down SpeechRecognizer (async mode)...")
+        self.interrupted = True
+        self._transcription_failed = True
+        
+        # Cancel async transcription task if running
+        if self.transcription_task and not self.transcription_task.done():
+            task_name = getattr(self.transcription_task, 'get_name', lambda: 'AsyncTranscriptionTask')()
+            logger.info(f"👂💫 Cancelling async transcription task ({task_name})...")
+            self.transcription_task.cancel()
+        
+        # Call regular cleanup
+        self._cleanup()
+        
+        logger.info("👂👋 SpeechRecognizer async shutdown completed.")
     
     def stop(self):
-        """Stop recording and return accumulated text"""
-        print("Stopping recording...")
+        """Stop recording and return accumulated text with better error handling"""
+        logger.info("Stopping recording...")
         
         # Xử lý audio còn lại trong buffer ngay lập tức
         if self.buffer:
-            print(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
+            logger.info(f"Processing remaining audio buffer: {len(self.buffer)} chunks")
             full_chunk = np.concatenate(self.buffer)
             
             # Combine with previous audio for context
@@ -624,13 +870,13 @@ class SpeechRecognizer:
             # Transcribe ngay lập tức nếu có đủ audio
             if len(combined) >= 16000:  # ít nhất 1 giây
                 try:
-                    print("Transcribing remaining audio immediately...")
+                    logger.info("Transcribing remaining audio immediately...")
                     result = self._transcribe_batch([combined])
                     if result and result[0].strip():
                         self.text += result[0].strip() + " "
-                        print(f"Final transcription: {result[0]}")
+                        logger.info(f"Final transcription: {result[0]}")
                 except Exception as e:
-                    print(f"Error transcribing final audio: {e}")
+                    logger.error(f"Error transcribing final audio: {e}")
         
         self._cleanup()
         
@@ -644,12 +890,12 @@ class SpeechRecognizer:
             except queue.Empty:
                 break
         
-        print("Cleanup completed.")
+        logger.info("Cleanup completed.")
         return self.text.strip()
     
     def reset_recording(self):
-        """Reset recording state without destroying the model"""
-        print("Resetting recording state...")
+        """Reset recording state without destroying the model with better error handling"""
+        logger.info("Resetting recording state...")
         
         # Stop current recording
         self.stop_flag.set()
@@ -683,11 +929,15 @@ class SpeechRecognizer:
         self.transcribe_thread.start()
         
         # Recreate ThreadPoolExecutor if it was shutdown
-        if self.executor._shutdown:
-            print("Recreating ThreadPoolExecutor...")
+        try:
+            if self.executor._shutdown:
+                logger.info("Recreating ThreadPoolExecutor...")
+                self.executor = ThreadPoolExecutor(max_workers=self.num_workers)
+        except Exception as e:
+            logger.error(f"Error recreating ThreadPoolExecutor: {e}")
             self.executor = ThreadPoolExecutor(max_workers=self.num_workers)
         
-        print("Recording state reset completed.")
+        logger.info("Recording state reset completed.")
     
     def get_current_text(self):
         """Lấy text hiện tại mà không dừng recording"""
@@ -707,32 +957,92 @@ class SpeechRecognizer:
         max_time = np.max(self.processing_times)
         
         return f"Performance Stats - Avg: {avg_time:.3f}s, Min: {min_time:.3f}s, Max: {max_time:.3f}s"
-
-# Ví dụ sử dụng
-if __name__ == "__main__":
-    try:
-        # Khởi tạo với optimal settings
-        recognizer = SpeechRecognizer(
-            batch_size=16,
-            num_workers=2
-        )
+    
+    # New methods from AudioInputProcessor integration
+    def is_transcription_healthy(self) -> bool:
+        """Check if transcription system is running properly."""
+        return not self._transcription_failed and not self.interrupted
+    
+    def get_queue_stats(self) -> dict:
+        """Get current queue statistics for monitoring."""
+        return {
+            'audio_queue_size': self.audio_queue.qsize(),
+            'result_queue_size': self.result_queue.qsize(),
+            'transcription_failed': self._transcription_failed,
+            'interrupted': self.interrupted,
+            'buffer_size': len(self.buffer),
+            'processing_times_count': len(self.processing_times)
+        }
+    
+    def feed_audio_bytes(self, audio_bytes: bytes, metadata: dict = None) -> bool:
+        """Feed raw audio bytes directly (compatible with AudioInputProcessor interface).
         
-        print(recognizer.get_performance_stats())
-        
-        #  Sử dụng start_recording và nhận text khi dừng
-        transcribed_text = recognizer.start_recording(return_text=True)
-        print(f"\nText đã ghi được: {transcribed_text}")
-        
-        if transcribed_text:
-            #  Lưu vào file
-            with open("transcription.txt", "w", encoding="utf-8") as f:
-                f.write(transcribed_text)
+        Args:
+            audio_bytes: Raw audio data
+            metadata: Optional metadata dictionary
             
-            # Ví dụ: Xử lý text thêm
-            word_count = len(transcribed_text.split())
-            print(f"Số từ đã ghi: {word_count}")
+        Returns:
+            True if audio was successfully queued, False otherwise
+        """
+        try:
+            if self._transcription_failed or self.interrupted:
+                return False
+                
+            # Process the audio chunk
+            processed = self.process_audio_chunk(audio_bytes)
+            if processed.size == 0:
+                return False
+            
+            # Queue for processing
+            self.audio_queue.put_nowait(processed)
+            return True
+        except queue.Full:
+            logger.warning("Audio queue full, cannot feed more audio")
+            return False
+        except Exception as e:
+            logger.error(f"Error feeding audio bytes: {e}")
+            return False
+
+# Enhanced usage example with async support
+if __name__ == "__main__":
+            # Example with enhanced features from AudioInputProcessor
+        def realtime_callback(text: str):
+            print(f"[REALTIME] {text}")
         
+        def recording_start_callback():
+            print("[EVENT] Recording started!")
         
-    except Exception as e:
-        print(f"Initialization error: {e}", file=sys.stderr)
-        sys.exit(1)
+        def silence_callback(is_active: bool):
+            print(f"[SILENCE] {'Active' if is_active else 'Inactive'}")
+        
+        try:
+            # Khởi tạo với enhanced features
+            recognizer = SpeechRecognizer(
+                batch_size=16,
+                num_workers=2,
+                language="vi",
+                realtime_callback=realtime_callback,
+                recording_start_callback=recording_start_callback,
+                silence_active_callback=silence_callback
+            )
+            
+            print(recognizer.get_performance_stats())
+            print("Queue stats:", recognizer.get_queue_stats())
+            print("Transcription healthy:", recognizer.is_transcription_healthy())
+            
+            #  Sử dụng start_recording và nhận text khi dừng
+            transcribed_text = recognizer.start_recording(return_text=True)
+            print(f"\nText đã ghi được: {transcribed_text}")
+            
+            if transcribed_text:
+                #  Lưu vào file
+                with open("transcription.txt", "w", encoding="utf-8") as f:
+                    f.write(transcribed_text)
+                
+                # Ví dụ: Xử lý text thêm
+                word_count = len(transcribed_text.split())
+                print(f"Số từ đã ghi: {word_count}")
+        
+        except Exception as e:
+            logger.error(f"Initialization error: {e}")
+            sys.exit(1)
