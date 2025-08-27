@@ -8,6 +8,69 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Auto mode indicator */
+.auto-mode-indicator {
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auto-mode-enabled {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+/* Fallback mode indicator */
+.status-text.fallback {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* Voice control button updates */
+.voice-control-button.auto-mode {
+  background: linear-gradient(145deg, #4ade80, #22c55e);
+  box-shadow: 0 8px 25px rgba(74, 222, 128, 0.4);
+}
+
+.voice-control-button.auto-mode:hover {
+  background: linear-gradient(145deg, #22c55e, #16a34a);
+  box-shadow: 0 12px 35px rgba(74, 222, 128, 0.5);
+}
+
+.voice-control-button.auto-mode.recording {
+  background: linear-gradient(145deg, #ef4444, #dc2626);
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 12px 35px rgba(239, 68, 68, 0.6);
+    transform: scale(1.05);
+  }
+}
+
+/* Status text for auto mode */
+.status-text.auto {
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
 /* Header */
 .call-header {
   display: flex;
@@ -250,6 +313,8 @@
 .voice-button-container {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 15px;
 }
 
 .voice-control-button {

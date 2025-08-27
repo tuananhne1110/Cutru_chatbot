@@ -11,6 +11,8 @@ const VoiceCallPage = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime] = useState(Date.now());
+  const [autoModeAvailable, setAutoModeAvailable] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
   const messagesEndRef = useRef(null);
   const intervalRef = useRef(null);
   const API_BASE = (process.env.REACT_APP_API_BASE || '').trim() || `${window.location.protocol}//${window.location.hostname}:8000`;
@@ -45,6 +47,41 @@ const VoiceCallPage = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup on component unmount
+      if (window.voicePollingInterval) {
+        clearInterval(window.voicePollingInterval);
+      }
+      if (window.autoVoiceWS) {
+        window.autoVoiceWS.close();
+        window.autoVoiceWS = null;
+      }
+    };
+  }, []);
+
+  // Check if auto voice mode is available
+  useEffect(() => {
+    const checkAutoMode = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/chat/voice/info`);
+        const data = await response.json();
+        if (data.enhanced_available && data.auto_voice_endpoint) {
+          setAutoModeAvailable(true);
+          console.log('🎤✅ Auto voice mode available');
+          // Auto connect to WebSocket when available
+          setTimeout(connectToAutoVoiceWebSocket, 1000);
+        }
+      } catch (error) {
+        console.log('🎤ℹ️ Auto voice mode not available, using fallback mode');
+        setVoiceStatus('Chế độ cơ bản - Nhấn và giữ để nói');
+      }
+    };
+    
+    checkAutoMode();
+  }, [API_BASE]);
+
   // Initialize with AI greeting
   useEffect(() => {
     const initMessage = {
@@ -68,6 +105,15 @@ const VoiceCallPage = () => {
   }, []);
 
   const startListening = async () => {
+    if (autoModeAvailable) {
+      startAutoListening();
+    } else {
+      // Fallback to old API if auto mode not available
+      startManualListening();
+    }
+  };
+
+  const startManualListening = async () => {
     try {
       setIsListening(true);
       setCurrentTranscript('');
@@ -106,7 +152,163 @@ const VoiceCallPage = () => {
     }
   };
 
+  const connectToAutoVoiceWebSocket = () => {
+    try {
+      setVoiceStatus('Đang kết nối...');
+      const wsUrl = `${API_BASE.replace('http', 'ws')}/chat/auto-voice`;
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        console.log('🎤🤖 Connected to auto voice WebSocket');
+        setVoiceStatus('Sẵn sàng - Click để bắt đầu nói!');
+        window.autoVoiceWS = ws;
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleAutoVoiceMessage(data);
+        } catch (error) {
+          console.error('Auto voice message error:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('Auto voice WebSocket error:', error);
+        setVoiceStatus('Lỗi kết nối');
+      };
+      
+      ws.onclose = () => {
+        console.log('🎤🤖 Auto voice WebSocket disconnected');
+        setIsListening(false);
+        setIsProcessing(false);
+        setVoiceStatus('Đã ngắt kết nối');
+        window.autoVoiceWS = null;
+      };
+      
+    } catch (error) {
+      console.error('Error connecting to auto voice WebSocket:', error);
+      setVoiceStatus('Lỗi kết nối');
+    }
+  };
+  
+  const handleAutoVoiceMessage = (data) => {
+    switch (data.type) {
+      case 'ready':
+        setVoiceStatus(data.message);
+        break;
+        
+      case 'listening_started':
+        setIsListening(true);
+        setVoiceStatus('🎤 Đang nghe... (tự động phát hiện kết thúc)');
+        setCurrentTranscript('');
+        break;
+        
+      case 'speech_started':
+        setVoiceStatus('🗣️ Phát hiện giọng nói...');
+        break;
+        
+      case 'partial_transcription':
+        setCurrentTranscript(data.text);
+        break;
+        
+      case 'speech_ended':
+        setVoiceStatus('⏳ Đang xử lý...');
+        break;
+        
+      case 'silence_detected':
+        setVoiceStatus('🤫 Phát hiện im lặng - đang kết thúc...');
+        break;
+        
+      case 'final_transcription':
+        setCurrentTranscript(data.text);
+        const userMessage = {
+          id: Date.now(),
+          type: 'user',
+          content: data.text,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour12: false })
+        };
+        setMessages(prev => [...prev, userMessage]);
+        setIsListening(false);
+        setIsProcessing(true);
+        setVoiceStatus('🤖 Đang suy nghĩ...');
+        break;
+        
+      case 'processing_started':
+        setIsProcessing(true);
+        setVoiceStatus('🔄 Đang xử lý câu hỏi...');
+        break;
+        
+      case 'response_start':
+        setVoiceStatus('📝 Đang tạo câu trả lời...');
+        break;
+        
+      case 'response_chunk':
+        // Update the AI message progressively
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          
+          if (lastMessage && lastMessage.type === 'ai' && lastMessage.isStreaming) {
+            lastMessage.content += data.text;
+          } else {
+            newMessages.push({
+              id: Date.now(),
+              type: 'ai',
+              content: data.text,
+              timestamp: new Date().toLocaleTimeString('vi-VN', { hour12: false }),
+              isStreaming: true
+            });
+          }
+          return newMessages;
+        });
+        break;
+        
+      case 'tts_start':
+        setVoiceStatus('🔊 Đang tạo âm thanh...');
+        break;
+        
+      case 'response_complete':
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage && lastMessage.isStreaming) {
+            lastMessage.isStreaming = false;
+          }
+          return newMessages;
+        });
+        setIsProcessing(false);
+        setVoiceStatus('✅ Hoàn thành - Click để nói tiếp!');
+        break;
+        
+      case 'error':
+        console.error('Auto voice error:', data.message);
+        setVoiceStatus(`❌ Lỗi: ${data.message}`);
+        setIsListening(false);
+        setIsProcessing(false);
+        break;
+        
+      default:
+        console.log('Unknown auto voice message:', data);
+    }
+  };
+  
+  const startAutoListening = () => {
+    if (window.autoVoiceWS && window.autoVoiceWS.readyState === WebSocket.OPEN) {
+      window.autoVoiceWS.send(JSON.stringify({ type: 'start_listening' }));
+    } else {
+      console.error('Auto voice WebSocket not connected');
+      connectToAutoVoiceWebSocket();
+    }
+  };
+
   const stopListening = async () => {
+    // Only used for fallback manual mode
+    if (autoModeAvailable) {
+      // In auto mode, stopping is handled automatically
+      return;
+    }
+    
     try {
       if (window.voicePollingInterval) {
         clearInterval(window.voicePollingInterval);
@@ -306,6 +508,12 @@ const VoiceCallPage = () => {
       clearInterval(intervalRef.current);
     }
     
+    // Close auto voice WebSocket if connected
+    if (window.autoVoiceWS) {
+      window.autoVoiceWS.close();
+      window.autoVoiceWS = null;
+    }
+    
     // Navigate back to main page
     navigate('/');
   };
@@ -415,38 +623,43 @@ const VoiceCallPage = () => {
       {/* Voice Control */}
       <div className="voice-control">
         <div className="control-status">
-          {isListening && (
-            <div className="status-text listening">
-              🎤 Đang ghi âm - Nhả để gửi
+          {/* Auto mode indicator */}
+          {autoModeAvailable && (
+            <div className="auto-mode-indicator">
+              <span className="auto-mode-enabled">
+                🤖 SMART VOICE: {voiceStatus || 'Sẵn sàng'}
+              </span>
             </div>
           )}
-          {isProcessing && (
-            <div className="status-text processing">
-              ⏳ Đang xử lý câu hỏi...
+          
+          {/* Status messages */}
+          {autoModeAvailable ? (
+            <div className="status-text auto">
+              {voiceStatus || 'Sẵn sàng - Click để bắt đầu nói!'}
             </div>
-          )}
-          {isPlaying && (
-            <div className="status-text playing">
-              🔊 AI đang trả lời...
-            </div>
-          )}
-          {!isListening && !isProcessing && !isPlaying && (
-            <div className="status-text ready">
-              Nhấn và giữ mic để nói chuyện
+          ) : (
+            <div className="status-text fallback">
+              📱 Chế độ cơ bản - Nhấn và giữ để nói
             </div>
           )}
         </div>
         
         <div className="voice-button-container">
+          {/* Voice control button */}
           <button
-            className={`voice-control-button ${isListening ? 'recording' : ''}`}
-            onMouseDown={startListening}
-            onMouseUp={stopListening}
-            onTouchStart={startListening}
-            onTouchEnd={stopListening}
+            className={`voice-control-button ${isListening ? 'recording' : ''} ${autoModeAvailable ? 'auto-mode' : ''}`}
+            onClick={autoModeAvailable ? startAutoListening : undefined}
+            onMouseDown={autoModeAvailable ? undefined : startListening}
+            onMouseUp={autoModeAvailable ? undefined : stopListening}
+            onTouchStart={autoModeAvailable ? undefined : startListening}
+            onTouchEnd={autoModeAvailable ? undefined : stopListening}
             disabled={isProcessing || isPlaying}
           >
-            {isListening ? '🔴' : '🎤'}
+            {autoModeAvailable ? (
+              isListening ? '🔴 Nghe...' : '🎤 Nói'
+            ) : (
+              isListening ? '🔴' : '🎤'
+            )}
           </button>
         </div>
       </div>

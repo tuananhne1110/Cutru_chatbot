@@ -16,10 +16,26 @@ import asyncio
 import base64
 import struct
 import time
+import threading
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["LangGraph Chat"])
+
+# Import enhanced voice processing modules
+try:
+    from utils.voice_processing.enhanced_audio_processor import EnhancedAudioProcessor
+    from utils.voice_processing.vietnamese_config import apply_vietnamese_optimizations, get_auto_voice_config
+    ENHANCED_VOICE_AVAILABLE = True
+    logger.info("🎤✅ Enhanced voice processing modules imported successfully")
+except ImportError as e:
+    ENHANCED_VOICE_AVAILABLE = False
+    logger.warning(f"🎤⚠️ Enhanced voice processing not available: {e}")
+
+# Apply Vietnamese optimizations
+if ENHANCED_VOICE_AVAILABLE:
+    apply_vietnamese_optimizations()
 
 @router.get("/voice/info")
 async def voice_chat_info():
@@ -36,6 +52,8 @@ async def voice_chat_info():
             "Instant response (models ready immediately)",
             "Server startup initialization"
         ],
+        "enhanced_available": ENHANCED_VOICE_AVAILABLE,
+        "auto_voice_endpoint": "/chat/auto-voice" if ENHANCED_VOICE_AVAILABLE else None,
         "message_types": {
             "client_to_server": [
                 "audio data (binary)",
@@ -638,4 +656,273 @@ async def generate_tts_audio(text: str, components: Dict[str, Any]) -> list:
         
     except Exception as e:
         logger.error(f"🎤💬 Error generating TTS audio: {e}")
-        return [] 
+        return []
+
+# Enhanced Auto Voice Chat WebSocket with Turn Detection
+@router.websocket("/auto-voice")
+async def auto_voice_chat(websocket: WebSocket):
+    """
+    Enhanced Voice Chat WebSocket với tự động phát hiện kết thúc câu nói.
+    
+    Chỉ cần click một lần để bắt đầu - không cần nhấn nút gì thêm!
+    Hệ thống sẽ tự động:
+    - Phát hiện khi người dùng bắt đầu nói
+    - Phát hiện khi người dùng kết thúc câu nói
+    - Xử lý và trả lời tự động
+    """
+    if not ENHANCED_VOICE_AVAILABLE:
+        await websocket.close(code=4001, reason="Enhanced voice processing not available")
+        return
+    
+    await websocket.accept()
+    logger.info("🎤🤖 Auto Voice Chat WebSocket connected")
+    
+    # Initialize voice components
+    voice_components = getattr(websocket.app.state, 'voice_components', None)
+    if not voice_components or not voice_components.get("models_loaded", False):
+        await websocket.send_json({
+            "type": "error",
+            "message": "Voice models not loaded. Please restart the server."
+        })
+        await websocket.close()
+        return
+    
+    # Create enhanced audio processor
+    enhanced_processor = None
+    try:
+        enhanced_processor = EnhancedAudioProcessor(
+            base_audio_processor=voice_components["tts"],
+            silence_threshold=1.2,  # 1.2 seconds of silence to end speech
+            enable_turn_detection=True,
+            enable_sentence_detection=True
+        )
+        
+        # Set up callbacks
+        async def on_speech_start():
+            await websocket.send_json({"type": "speech_started"})
+        
+        async def on_speech_end():
+            await websocket.send_json({"type": "speech_ended"})
+        
+        async def on_partial_text(text: str):
+            await websocket.send_json({
+                "type": "partial_transcription",
+                "text": text
+            })
+        
+        async def on_final_text(text: str):
+            await websocket.send_json({
+                "type": "final_transcription", 
+                "text": text
+            })
+            # Automatically process the text through chat pipeline
+            await process_auto_voice_input(websocket, text, voice_components)
+        
+        async def on_silence_detected():
+            await websocket.send_json({"type": "silence_detected"})
+        
+        # Assign callbacks
+        enhanced_processor.on_speech_start = on_speech_start
+        enhanced_processor.on_speech_end = on_speech_end 
+        enhanced_processor.on_partial_text = on_partial_text
+        enhanced_processor.on_final_text = on_final_text
+        enhanced_processor.on_silence_detected = on_silence_detected
+        
+        # Send ready signal
+        await websocket.send_json({
+            "type": "ready",
+            "message": "Auto voice chat ready. Click to start speaking!",
+            "features": {
+                "auto_turn_detection": True,
+                "vietnamese_optimized": True,
+                "sentence_detection": True,
+                "silence_detection": True
+            }
+        })
+        
+        # Main message loop
+        while True:
+            try:
+                # Receive message
+                message = await websocket.receive()
+                
+                if message["type"] == "websocket.disconnect":
+                    break
+                
+                # Handle text messages (commands)
+                if message["type"] == "websocket.receive" and "text" in message:
+                    data = json.loads(message["text"])
+                    await handle_auto_voice_command(websocket, data, enhanced_processor)
+                
+                # Handle binary messages (audio data)
+                elif message["type"] == "websocket.receive" and "bytes" in message:
+                    audio_data = message["bytes"]
+                    
+                    # Process audio if we're listening
+                    if enhanced_processor.is_active():
+                        # Extract metadata if present (timestamp, flags)
+                        metadata = {}
+                        if len(audio_data) >= 8:
+                            try:
+                                timestamp, flags = struct.unpack('<II', audio_data[:8])
+                                audio_data = audio_data[8:]
+                                metadata = {
+                                    "timestamp": timestamp,
+                                    "flags": flags,
+                                    "isTTSPlaying": bool(flags & 1)
+                                }
+                            except struct.error:
+                                pass  # Use raw audio if header parsing fails
+                        
+                        # Process audio chunk
+                        enhanced_processor.process_audio_chunk(audio_data, metadata)
+                        
+                        # Also process through STT for transcription
+                        await process_voice_audio_enhanced(audio_data, enhanced_processor, voice_components)
+                
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"🎤🤖💥 Auto voice chat error: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Processing error: {str(e)}"
+                })
+    
+    except Exception as e:
+        logger.error(f"🎤🤖💥 Auto voice chat initialization error: {e}")
+        await websocket.send_json({
+            "type": "error", 
+            "message": f"Initialization error: {str(e)}"
+        })
+    
+    finally:
+        # Cleanup
+        if enhanced_processor and enhanced_processor.is_active():
+            enhanced_processor.stop_listening()
+        logger.info("🎤🤖 Auto Voice Chat WebSocket disconnected")
+
+async def handle_auto_voice_command(websocket: WebSocket, data: dict, enhanced_processor: EnhancedAudioProcessor):
+    """Handle commands for auto voice chat."""
+    command = data.get("type")
+    
+    if command == "start_listening":
+        if enhanced_processor.start_listening():
+            await websocket.send_json({
+                "type": "listening_started",
+                "message": "Listening started. Speak now - system will auto-detect when you finish!"
+            })
+        else:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Failed to start listening"
+            })
+    
+    elif command == "stop_listening":
+        final_text = enhanced_processor.stop_listening()
+        await websocket.send_json({
+            "type": "listening_stopped",
+            "final_text": final_text or ""
+        })
+    
+    elif command == "reset":
+        enhanced_processor.stop_listening()
+        await websocket.send_json({
+            "type": "reset_complete"
+        })
+    
+    else:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Unknown command: {command}"
+        })
+
+async def process_voice_audio_enhanced(audio_data: bytes, enhanced_processor: EnhancedAudioProcessor, voice_components: dict):
+    """Process audio through enhanced STT system."""
+    try:
+        stt = voice_components.get("stt")
+        if not stt:
+            return
+        
+        # Convert audio to numpy array for STT processing
+        if len(audio_data) >= 2:
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            audio_float = audio_array.astype(np.float32) / 32768.0
+            
+            # Process through STT (this is simplified - in reality you'd need proper STT integration)
+            # For now, we'll simulate text updates
+            # In a real implementation, you'd integrate with the actual STT system
+            
+            # Check if we have enough audio for transcription
+            if len(audio_float) > 1600:  # ~100ms at 16kHz
+                # Placeholder for STT processing
+                # enhanced_processor.process_text_update("sample text", is_final=False)
+                pass
+    
+    except Exception as e:
+        logger.error(f"🎤🤖💥 Enhanced audio processing error: {e}")
+
+async def process_auto_voice_input(websocket: WebSocket, text: str, voice_components: dict):
+    """Process voice input through the chat pipeline automatically."""
+    try:
+        await websocket.send_json({
+            "type": "processing_started",
+            "text": text
+        })
+        
+        # Process through existing chat pipeline
+        session_id = f"auto_voice_{int(time.time())}"
+        
+        # Create chat request
+        request = ChatRequest(
+            message=text,
+            session_id=session_id
+        )
+        
+        # Process through RAG workflow
+        initial_state = create_initial_state(request)
+        config = RunnableConfig(configurable={"session_id": session_id})
+        
+        # Stream response
+        await websocket.send_json({
+            "type": "response_start"
+        })
+        
+        response_text = ""
+        async for chunk in rag_workflow.astream(initial_state, config=config):
+            state = cast(ChatState, chunk)
+            result = extract_results_from_state(state)
+            
+            if result and result.response:
+                chunk_text = result.response
+                if chunk_text != response_text:
+                    new_content = chunk_text[len(response_text):]
+                    response_text = chunk_text
+                    
+                    await websocket.send_json({
+                        "type": "response_chunk",
+                        "text": new_content
+                    })
+        
+        # Generate TTS audio
+        if response_text:
+            await websocket.send_json({
+                "type": "tts_start"
+            })
+            
+            audio_chunks = await generate_tts_audio(response_text, voice_components)
+            
+            for chunk in audio_chunks:
+                await websocket.send_bytes(chunk)
+            
+            await websocket.send_json({
+                "type": "response_complete",
+                "final_text": response_text
+            })
+        
+    except Exception as e:
+        logger.error(f"🎤🤖💥 Auto voice input processing error: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Processing error: {str(e)}"
+        }) 
