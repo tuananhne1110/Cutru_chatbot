@@ -170,7 +170,8 @@ flowchart TB
         P_CHUNK["Chunk 4 sections"]:::proc
         P_META["Attach metadata"]:::proc
         P_EMB["Embed (Qwen3 0.6B)"]:::ret
-        P_UPS["Upsert to Qdrant"]:::store %%Trình tự xử lý (Sequence: Request → Answer)
+        P_UPS["Upsert to Qdrant"]:::store
+        %% Trình tự xử lý (Sequence: Request → Answer)
         P_CHUNK --> P_META --> P_EMB --> P_UPS
       end
     end
