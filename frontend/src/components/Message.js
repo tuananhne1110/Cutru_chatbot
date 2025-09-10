@@ -9,10 +9,32 @@ function Message({ message, showSources, toggleSources }) {
           ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
           : message.type === 'error'
           ? 'bg-red-100 text-red-800'
+          : message.type === 'upload'
+          ? 'bg-white text-gray-900 border border-gray-200'
           : 'bg-white text-gray-900 border border-gray-200'
       }`}>
         <div className="flex items-start space-x-2">
           <div className="flex-1">
+            {message.type === 'upload' ? (
+              <div className="flex flex-wrap gap-2">
+                {(message.files || []).map((f, idx) => {
+                  const display = f.filename || f.stored_name || 'file';
+                  const truncated = display.length > 30 ? display.slice(0, 30) + '…' : display;
+                  const href = `/chat/upload/download?session_id=${encodeURIComponent(f.session_id)}&file=${encodeURIComponent(f.stored_name)}&filename=${encodeURIComponent(f.filename || '')}`;
+                  return (
+                    <a
+                      key={idx}
+                      href={href}
+                      className="inline-flex items-center max-w-full px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-800 hover:bg-gray-100 text-xs"
+                      title={display}
+                    >
+                      <span className="mr-1">📎</span>
+                      <span className="truncate" style={{ maxWidth: '200px' }}>{truncated}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="prose prose-sm max-w-none text-sm">
               {/* Loại bỏ hoặc thay thế link file trong nội dung trả lời */}
               {(() => {
@@ -22,6 +44,7 @@ function Message({ message, showSources, toggleSources }) {
                 return <ReactMarkdown>{contentWithoutLinks}</ReactMarkdown>;
               })()}
             </div>
+            )}
             {/* Nút tải file nếu có file_url hoặc url hợp lệ trong sources */}
             {message.sources && message.sources.length > 0 && (() => {
               // Chỉ lấy file đầu tiên có file_url hợp lệ

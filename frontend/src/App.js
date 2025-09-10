@@ -105,6 +105,40 @@ function App() {
     navigate('/voice-call');
   };
 
+  const handleUploadFiles = async (files) => {
+    try {
+      const form = new FormData();
+      files.forEach(f => form.append('files', f));
+      if (sessionId) form.append('session_id', sessionId);
+      const res = await fetch(`/chat/upload`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      const uploaded = data.files || [];
+      // Append a lightweight system message to confirm upload
+      if (uploaded.length) {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          type: 'upload',
+          files: uploaded.map(u => ({
+            session_id: data.session_id,
+            stored_name: u.stored_name,
+            filename: u.filename,
+            size: u.size
+          })),
+          content: '',
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        type: 'error',
+        content: 'Tải tệp thất bại. Vui lòng thử lại.',
+        timestamp: new Date().toISOString()
+      }]);
+    }
+  };
+
   // Check for CT01 related messages and open modal
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
@@ -149,6 +183,7 @@ function App() {
             createNewSession={createNewSession}
             openCT01Modal={openCT01Modal}
             openVoiceChat={openVoiceChat}
+            onUploadFiles={handleUploadFiles}
           />
 
           {/* CT01 Modal */}

@@ -127,6 +127,56 @@ async def get_current_text():
         logger.error(f"Error getting current text: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/get-transcription")
+async def get_transcription(request: Request):
+    """Lấy kết quả transcription từ audio file upload"""
+    
+    try:
+        # Get voice components from app state
+        voice_components = getattr(request.app.state, "voice_components", None)
+        if not voice_components or not voice_components.get("stt"):
+            raise HTTPException(status_code=503, detail="STT model not initialized")
+        
+        stt = voice_components["stt"]
+        
+        # For uploaded audio files, we process them directly
+        form = await request.form()
+        audio_file = form.get("audio")
+        
+        if not audio_file:
+            raise HTTPException(status_code=400, detail="No audio file provided")
+        
+        # Read audio data
+        audio_data = await audio_file.read()
+        
+        # Process audio through STT
+        success = stt.feed_audio_bytes(audio_data, metadata={"source": "upload", "format": "webm"})
+        
+        if success:
+            # Get transcription result
+            transcribed_text = stt.get_current_text()
+            
+            # Clear for next input
+            stt.clear_text()
+            
+            return {
+                "status": "success",
+                "text": transcribed_text or "",
+                "message": "Audio processed successfully"
+            }
+        else:
+            return {
+                "status": "error", 
+                "text": "",
+                "message": "Failed to process audio"
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing audio transcription: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/model-info")
 async def get_model_info(request: Request):
     """Lấy thông tin về voice model configuration"""

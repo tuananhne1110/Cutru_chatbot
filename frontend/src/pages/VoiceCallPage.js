@@ -12,6 +12,7 @@ const VoiceCallPage = () => {
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime] = useState(Date.now());
   const [autoModeAvailable, setAutoModeAvailable] = useState(false);
+  const [useAutoMode, setUseAutoMode] = useState(true);
   const [voiceStatus, setVoiceStatus] = useState('');
   const messagesEndRef = useRef(null);
   const intervalRef = useRef(null);
@@ -61,33 +62,19 @@ const VoiceCallPage = () => {
     };
   }, []);
 
-  // Check if auto voice mode is available
+  // Enable auto voice mode 
   useEffect(() => {
-    const checkAutoMode = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/chat/voice/info`);
-        const data = await response.json();
-        if (data.enhanced_available && data.auto_voice_endpoint) {
-          setAutoModeAvailable(true);
-          console.log('🎤✅ Auto voice mode available');
-          // Auto connect to WebSocket when available
-          setTimeout(connectToAutoVoiceWebSocket, 1000);
-        }
-      } catch (error) {
-        console.log('🎤ℹ️ Auto voice mode not available, using fallback mode');
-        setVoiceStatus('Chế độ cơ bản - Nhấn và giữ để nói');
-      }
-    };
-    
-    checkAutoMode();
-  }, [API_BASE]);
+    setAutoModeAvailable(true);
+    setVoiceStatus('Sẵn sàng - Click để bắt đầu nói');
+    console.log('🎤🔧 Using auto voice mode with turn detection');
+  }, []);
 
   // Initialize with AI greeting
   useEffect(() => {
     const initMessage = {
       id: Date.now(),
       type: 'ai',
-      content: 'Chào ông bà, tôi là Nhân viên AI Trung tâm Phục vụ hành chính công Hà Nội. Vui lòng nói hoặc bấm:\nSố 1 để hỏi đáp thủ tục hành chính hoặc phản ánh kiến nghị\nSố 2 để tra cứu hồ sơ',
+      content: 'Chào ông bà, tôi là Nhân viên AI Trung tâm Phục vụ hành chính công Hà Nội.',
       timestamp: new Date().toLocaleTimeString('vi-VN', { 
         hour12: false,
         hour: '2-digit',
@@ -105,10 +92,11 @@ const VoiceCallPage = () => {
   }, []);
 
   const startListening = async () => {
-    if (autoModeAvailable) {
+    if (autoModeAvailable && useAutoMode) {
+      console.log('🎤🚀 Starting auto voice mode');
       startAutoListening();
     } else {
-      // Fallback to old API if auto mode not available
+      console.log('🎤📱 Fallback to manual mode');
       startManualListening();
     }
   };
@@ -118,6 +106,7 @@ const VoiceCallPage = () => {
       setIsListening(true);
       setCurrentTranscript('');
       
+      // Start backend recording session
       const response = await fetch(`${API_BASE}/voice/start-recording`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -127,69 +116,151 @@ const VoiceCallPage = () => {
         throw new Error('Failed to start recording');
       }
 
-      // Poll for transcript updates
-      const pollInterval = setInterval(async () => {
-        try {
-          const textResponse = await fetch(`${API_BASE}/voice/get-current-text`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          if (textResponse.ok) {
-            const data = await textResponse.json();
-            setCurrentTranscript(data.text || '');
-          }
-        } catch (error) {
-          console.error('Error polling transcript:', error);
+      // Get microphone access for actual recording
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        } 
+      });
+      
+      // Create MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      window.currentManualRecorder = mediaRecorder;
+      window.currentManualStream = stream;
+      const chunks = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
         }
-      }, 500);
-
-      window.voicePollingInterval = pollInterval;
+      };
+      
+      mediaRecorder.onstop = async () => {
+        // Process recorded audio
+        if (chunks.length > 0) {
+          const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+          await processAudioBlob(audioBlob);
+        }
+        
+        // Clean up
+        stream.getTracks().forEach(track => track.stop());
+        window.currentManualRecorder = null;
+        window.currentManualStream = null;
+      };
+      
+      // Start recording
+      mediaRecorder.start();
+      console.log('🎤 Started manual recording with MediaRecorder');
 
     } catch (error) {
       console.error('Error starting voice recording:', error);
       setIsListening(false);
+      setVoiceStatus('Lỗi truy cập microphone');
+    }
+  };
+
+  const processAudioBlob = async (audioBlob) => {
+    try {
+      setIsProcessing(true);
+      setCurrentTranscript('');
+      
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+      
+      const response = await fetch(`${API_BASE}/voice/get-transcription`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const finalText = data.text?.trim();
+      
+      if (finalText) {
+        // Add user message
+        const userMessage = {
+          id: Date.now(),
+          type: 'user',
+          content: finalText,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { 
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            fractionalSecondDigits: 3
+          }),
+          confidence: '95%' // Simulate confidence
+        };
+        setMessages(prev => [...prev, userMessage]);
+        
+        // Process through chat pipeline
+        await processChatResponse(finalText);
+      } else {
+        setVoiceStatus('Không nhận được text từ audio');
+      }
+      
+    } catch (error) {
+      console.error('Error processing audio blob:', error);
+      setVoiceStatus('Lỗi xử lý audio');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const connectToAutoVoiceWebSocket = () => {
-    try {
-      setVoiceStatus('Đang kết nối...');
-      const wsUrl = `${API_BASE.replace('http', 'ws')}/chat/auto-voice`;
-      const ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        console.log('🎤🤖 Connected to auto voice WebSocket');
-        setVoiceStatus('Sẵn sàng - Click để bắt đầu nói!');
-        window.autoVoiceWS = ws;
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleAutoVoiceMessage(data);
-        } catch (error) {
-          console.error('Auto voice message error:', error);
+    return new Promise((resolve, reject) => {
+      try {
+        // If already open, resolve immediately
+        if (window.autoVoiceWS && window.autoVoiceWS.readyState === WebSocket.OPEN) {
+          return resolve(window.autoVoiceWS);
         }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('Auto voice WebSocket error:', error);
+        setVoiceStatus('Đang kết nối...');
+        const wsUrl = `${API_BASE.replace('http', 'ws')}/chat/auto-voice`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('🎤🤖 Connected to auto voice WebSocket');
+          setVoiceStatus('Sẵn sàng - Click để bắt đầu nói!');
+          window.autoVoiceWS = ws;
+          resolve(ws);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleAutoVoiceMessage(data);
+          } catch (error) {
+            console.error('Auto voice message error:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('Auto voice WebSocket error:', error);
+          setVoiceStatus('Lỗi kết nối');
+        };
+
+        ws.onclose = () => {
+          console.log('🎤🤖 Auto voice WebSocket disconnected');
+          setIsListening(false);
+          setIsProcessing(false);
+          setVoiceStatus('Đã ngắt kết nối');
+          window.autoVoiceWS = null;
+        };
+      } catch (error) {
+        console.error('Error connecting to auto voice WebSocket:', error);
         setVoiceStatus('Lỗi kết nối');
-      };
-      
-      ws.onclose = () => {
-        console.log('🎤🤖 Auto voice WebSocket disconnected');
-        setIsListening(false);
-        setIsProcessing(false);
-        setVoiceStatus('Đã ngắt kết nối');
-        window.autoVoiceWS = null;
-      };
-      
-    } catch (error) {
-      console.error('Error connecting to auto voice WebSocket:', error);
-      setVoiceStatus('Lỗi kết nối');
-    }
+        reject(error);
+      }
+    });
   };
   
   const handleAutoVoiceMessage = (data) => {
@@ -293,69 +364,93 @@ const VoiceCallPage = () => {
     }
   };
   
-  const startAutoListening = () => {
-    if (window.autoVoiceWS && window.autoVoiceWS.readyState === WebSocket.OPEN) {
+  const startAutoListening = async () => {
+    try {
+      // Ensure WebSocket is connected before starting
+      if (!window.autoVoiceWS || window.autoVoiceWS.readyState !== WebSocket.OPEN) {
+        console.log('🎤🔗 Connecting to auto voice WebSocket...');
+        await connectToAutoVoiceWebSocket();
+      }
+
+      // Request microphone permission and start recording
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      
+      console.log('🎤🔴 Microphone access granted');
+      setIsListening(true);
+      
+      // Create MediaRecorder for audio capture
+      const options = { mimeType: 'audio/webm;codecs=opus' };
+      const mediaRecorder = new MediaRecorder(stream, options);
+      
+      window.currentMediaRecorder = mediaRecorder;
+      window.currentStream = stream;
+      
+      // Handle audio data
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && window.autoVoiceWS?.readyState === WebSocket.OPEN) {
+          console.log('🎤📤 Sending audio chunk:', event.data.size, 'bytes');
+          window.autoVoiceWS.send(event.data);
+        }
+      };
+      
+      mediaRecorder.onerror = (error) => {
+        console.error('MediaRecorder error:', error);
+        setVoiceStatus('Lỗi ghi âm');
+      };
+      
+      mediaRecorder.onstop = () => {
+        console.log('🎤⏹️ MediaRecorder stopped');
+        setIsListening(false);
+        if (window.currentStream) {
+          window.currentStream.getTracks().forEach(track => track.stop());
+          window.currentStream = null;
+        }
+      };
+      
+      // Send start command to backend first
       window.autoVoiceWS.send(JSON.stringify({ type: 'start_listening' }));
-    } else {
-      console.error('Auto voice WebSocket not connected');
-      connectToAutoVoiceWebSocket();
+
+      // Start recording with larger chunks so backend processes them (>2000 bytes)
+      mediaRecorder.start(750); // ~750ms chunks
+      
+    } catch (error) {
+      console.error('Error starting auto listening:', error);
+      setVoiceStatus('Lỗi truy cập microphone');
+      setIsListening(false);
     }
   };
 
   const stopListening = async () => {
-    // Only used for fallback manual mode
-    if (autoModeAvailable) {
-      // In auto mode, stopping is handled automatically
-      return;
-    }
-    
     try {
-      if (window.voicePollingInterval) {
-        clearInterval(window.voicePollingInterval);
-        window.voicePollingInterval = null;
-      }
-
       setIsListening(false);
-      setIsProcessing(true);
-
-      const response = await fetch(`${API_BASE}/voice/stop-recording`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to stop recording');
+      
+      // Stop manual MediaRecorder if active
+      if (window.currentManualRecorder && window.currentManualRecorder.state === 'recording') {
+        console.log('🎤⏹️ Stopping manual MediaRecorder');
+        window.currentManualRecorder.stop();
       }
 
-      const data = await response.json();
-      const finalText = data.text?.trim() || currentTranscript.trim();
-
-      if (finalText) {
-        // Add user message
-        const userMessage = {
-          id: Date.now(),
-          type: 'user',
-          content: finalText,
-          timestamp: new Date().toLocaleTimeString('vi-VN', { 
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            fractionalSecondDigits: 3
-          }),
-          confidence: '97%/50%' // Simulate confidence scores
-        };
-        setMessages(prev => [...prev, userMessage]);
-        setCurrentTranscript('');
-
-        // Process through chat pipeline
-        await processChatResponse(finalText);
+      // Stop backend recording session
+      try {
+        await fetch(`${API_BASE}/voice/stop-recording`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error stopping backend recording:', error);
       }
 
     } catch (error) {
       console.error('Error stopping voice recording:', error);
-    } finally {
-      setIsProcessing(false);
+      setVoiceStatus('Lỗi dừng ghi âm');
     }
   };
 
@@ -500,6 +595,24 @@ const VoiceCallPage = () => {
   };
 
   const endCall = () => {
+    // Stop auto voice media recorder 
+    if (window.currentMediaRecorder && window.currentMediaRecorder.state !== 'inactive') {
+      window.currentMediaRecorder.stop();
+    }
+    if (window.currentStream) {
+      window.currentStream.getTracks().forEach(track => track.stop());
+      window.currentStream = null;
+    }
+    
+    // Stop manual media recorder
+    if (window.currentManualRecorder && window.currentManualRecorder.state !== 'inactive') {
+      window.currentManualRecorder.stop();
+    }
+    if (window.currentManualStream) {
+      window.currentManualStream.getTracks().forEach(track => track.stop());
+      window.currentManualStream = null;
+    }
+    
     // Clean up any ongoing processes
     if (window.voicePollingInterval) {
       clearInterval(window.voicePollingInterval);
@@ -517,6 +630,35 @@ const VoiceCallPage = () => {
     // Navigate back to main page
     navigate('/');
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop auto voice media recorder
+      if (window.currentMediaRecorder && window.currentMediaRecorder.state !== 'inactive') {
+        window.currentMediaRecorder.stop();
+      }
+      if (window.currentStream) {
+        window.currentStream.getTracks().forEach(track => track.stop());
+        window.currentStream = null;
+      }
+      
+      // Stop manual media recorder
+      if (window.currentManualRecorder && window.currentManualRecorder.state !== 'inactive') {
+        window.currentManualRecorder.stop();
+      }
+      if (window.currentManualStream) {
+        window.currentManualStream.getTracks().forEach(track => track.stop());
+        window.currentManualStream = null;
+      }
+      
+      // Close WebSocket
+      if (window.autoVoiceWS) {
+        window.autoVoiceWS.close();
+        window.autoVoiceWS = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="voice-call-page">
@@ -622,44 +764,18 @@ const VoiceCallPage = () => {
 
       {/* Voice Control */}
       <div className="voice-control">
-        <div className="control-status">
-          {/* Auto mode indicator */}
-          {autoModeAvailable && (
-            <div className="auto-mode-indicator">
-              <span className="auto-mode-enabled">
-                🤖 SMART VOICE: {voiceStatus || 'Sẵn sàng'}
-              </span>
-            </div>
-          )}
-          
-          {/* Status messages */}
-          {autoModeAvailable ? (
-            <div className="status-text auto">
-              {voiceStatus || 'Sẵn sàng - Click để bắt đầu nói!'}
-            </div>
-          ) : (
-            <div className="status-text fallback">
-              📱 Chế độ cơ bản - Nhấn và giữ để nói
-            </div>
-          )}
-        </div>
-        
         <div className="voice-button-container">
           {/* Voice control button */}
           <button
             className={`voice-control-button ${isListening ? 'recording' : ''} ${autoModeAvailable ? 'auto-mode' : ''}`}
-            onClick={autoModeAvailable ? startAutoListening : undefined}
+            onClick={autoModeAvailable ? startListening : undefined}
             onMouseDown={autoModeAvailable ? undefined : startListening}
             onMouseUp={autoModeAvailable ? undefined : stopListening}
             onTouchStart={autoModeAvailable ? undefined : startListening}
             onTouchEnd={autoModeAvailable ? undefined : stopListening}
             disabled={isProcessing || isPlaying}
           >
-            {autoModeAvailable ? (
-              isListening ? '🔴 Nghe...' : '🎤 Nói'
-            ) : (
-              isListening ? '🔴' : '🎤'
-            )}
+            {isListening ? '🔴' : '🎤'}
           </button>
         </div>
       </div>

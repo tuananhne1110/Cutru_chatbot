@@ -1,4 +1,7 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import UploadFile, File, Form
+from fastapi import Request
+from starlette.responses import FileResponse
 from datetime import datetime
 import uuid
 import logging
@@ -222,6 +225,85 @@ async def langgraph_chat_stream(request: ChatRequest):
         def error_stream(e=e):
             yield f"data: {{\"type\": \"error\", \"content\": \"Đã xảy ra lỗi: {str(e)}\"}}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream; charset=utf-8")
+
+@router.post("/upload")
+async def upload_files(
+    request: Request,
+    files: list[UploadFile] = File(..., description="Các tệp tài liệu để tải lên tạm thời"),
+    session_id: str = Form(None),
+):
+    """Upload tài liệu tạm thời để sử dụng trong phiên chat.
+
+    Lưu vào thư mục tạm cục bộ: /tmp/cutru_uploads/{session_id}/
+    Trả về danh sách metadata (filename, content_type, path) để client tham chiếu trong các tin nhắn tiếp theo.
+    """
+    try:
+        sid = session_id or str(uuid.uuid4())
+        base_dir = os.path.join("/tmp", "cutru_uploads", sid)
+        os.makedirs(base_dir, exist_ok=True)
+
+        saved = []
+        for f in files:
+            original_name = f.filename or f"file_{uuid.uuid4().hex}"
+            safe_name = os.path.basename(original_name)
+            unique_name = f"{uuid.uuid4().hex}_{safe_name}"
+            dest_path = os.path.join(base_dir, unique_name)
+
+            content = await f.read()
+            with open(dest_path, "wb") as out:
+                out.write(content)
+
+            saved.append({
+                "filename": safe_name,
+                "stored_name": unique_name,
+                "content_type": f.content_type,
+                "session_id": sid,
+                "path": dest_path,
+                "size": len(content),
+            })
+
+        return {"session_id": sid, "files": saved}
+    except Exception as e:
+        logger.error(f"Error uploading files: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/upload/clear")
+async def clear_session_uploads(session_id: str):
+    """Xóa toàn bộ tài liệu tạm thời của một phiên trong /tmp/cutru_uploads/{session_id}."""
+    try:
+        base_dir = os.path.join("/tmp", "cutru_uploads", session_id)
+        if os.path.isdir(base_dir):
+            import shutil
+            shutil.rmtree(base_dir)
+            return {"session_id": session_id, "cleared": True}
+        return {"session_id": session_id, "cleared": False, "reason": "not_found"}
+    except Exception as e:
+        logger.error(f"Error clearing uploads for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/upload/download")
+async def download_uploaded_file(session_id: str, file: str, filename: Optional[str] = None):
+    """Tải xuống một tệp đã upload tạm thời theo phiên.
+
+    - session_id: phiên chat
+    - file: tên file đã lưu (stored_name) trả về từ /chat/upload
+    - filename: tên gợi ý khi tải xuống (tùy chọn)
+    """
+    try:
+        # Chặn traversal
+        safe_stored = os.path.basename(file)
+        base_dir = os.path.join("/tmp", "cutru_uploads", session_id)
+        path = os.path.join(base_dir, safe_stored)
+        if not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        download_name = filename or safe_stored
+        return FileResponse(path, media_type="application/octet-stream", filename=download_name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Voice interface for existing chatbot
 @router.websocket("/voice")
@@ -728,6 +810,9 @@ async def auto_voice_chat(websocket: WebSocket):
         enhanced_processor.on_final_text = on_final_text
         enhanced_processor.on_silence_detected = on_silence_detected
         
+        # Call speech start callback immediately after starting
+        await on_speech_start()
+        
         # Send ready signal
         await websocket.send_json({
             "type": "ready",
@@ -752,33 +837,56 @@ async def auto_voice_chat(websocket: WebSocket):
                 # Handle text messages (commands)
                 if message["type"] == "websocket.receive" and "text" in message:
                     data = json.loads(message["text"])
+                    logger.info(f"🎤📨 Received command: {data.get('type', 'unknown')}")
                     await handle_auto_voice_command(websocket, data, enhanced_processor)
                 
                 # Handle binary messages (audio data)
                 elif message["type"] == "websocket.receive" and "bytes" in message:
                     audio_data = message["bytes"]
+                    logger.debug(f"🎤📥 Received audio data: {len(audio_data)} bytes")
                     
                     # Process audio if we're listening
                     if enhanced_processor.is_active():
-                        # Extract metadata if present (timestamp, flags)
-                        metadata = {}
-                        if len(audio_data) >= 8:
+                        try:
+                            # Simple gating to reduce false positives
+                            min_total_bytes = 30000
+                            # Update a simple counter on the processor instance
+                            total_bytes = getattr(enhanced_processor, "_session_total_bytes", 0) + len(audio_data)
+                            setattr(enhanced_processor, "_session_total_bytes", total_bytes)
+
+                            # Heuristic voice activity check
+                            has_voice = False
                             try:
-                                timestamp, flags = struct.unpack('<II', audio_data[:8])
-                                audio_data = audio_data[8:]
-                                metadata = {
-                                    "timestamp": timestamp,
-                                    "flags": flags,
-                                    "isTTSPlaying": bool(flags & 1)
-                                }
-                            except struct.error:
-                                pass  # Use raw audio if header parsing fails
-                        
-                        # Process audio chunk
-                        enhanced_processor.process_audio_chunk(audio_data, metadata)
-                        
-                        # Also process through STT for transcription
-                        await process_voice_audio_enhanced(audio_data, enhanced_processor, voice_components)
+                                has_voice = enhanced_processor._has_voice_activity(audio_data)  # type: ignore[attr-defined]
+                            except Exception:
+                                has_voice = len(audio_data) > 6000
+
+                            if has_voice and total_bytes >= min_total_bytes:
+                                logger.debug(f"🎤🔄 Processing WebM audio chunk: {len(audio_data)} bytes (voice detected)")
+                                transcribed_text = await process_voice_audio_enhanced(
+                                    audio_data, enhanced_processor, voice_components
+                                )
+                                
+                                # If we got a complete transcription, process it
+                                if transcribed_text:
+                                    logger.info(f"🎤✅ Processing transcribed text: '{transcribed_text}'")
+                                    await process_auto_voice_input(websocket, transcribed_text, voice_components)
+                                    
+                                    # Stop listening after processing one complete phrase
+                                    enhanced_processor.stop_listening()
+                                    await websocket.send_json({
+                                        "type": "listening_stopped",
+                                        "message": "Processing complete. Click to speak again."
+                                    })
+                            else:
+                                logger.debug("🎤🔇 Skipping chunk (insufficient voice activity or not enough data yet)")
+                            
+                        except Exception as e:
+                            logger.error(f"🎤💥 Error processing audio: {e}")
+                            await websocket.send_json({
+                                "type": "error", 
+                                "message": f"Audio processing error: {str(e)}"
+                            })
                 
             except WebSocketDisconnect:
                 break
@@ -808,6 +916,13 @@ async def handle_auto_voice_command(websocket: WebSocket, data: dict, enhanced_p
     
     if command == "start_listening":
         if enhanced_processor.start_listening():
+            # Clear any residual STT text to avoid stale output
+            try:
+                from main import voice_components as _vc
+                if _vc and _vc.get("stt"):
+                    _vc["stt"].clear_text()
+            except Exception:
+                pass
             await websocket.send_json({
                 "type": "listening_started",
                 "message": "Listening started. Speak now - system will auto-detect when you finish!"
@@ -838,29 +953,73 @@ async def handle_auto_voice_command(websocket: WebSocket, data: dict, enhanced_p
         })
 
 async def process_voice_audio_enhanced(audio_data: bytes, enhanced_processor: EnhancedAudioProcessor, voice_components: dict):
-    """Process audio through enhanced STT system."""
+    """Process audio through enhanced STT system with voice activity detection."""
     try:
         stt = voice_components.get("stt")
         if not stt:
+            logger.warning("🎤⚠️ STT component not available")
             return
         
-        # Convert audio to numpy array for STT processing
-        if len(audio_data) >= 2:
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
-            audio_float = audio_array.astype(np.float32) / 32768.0
+        # Skip processing for small audio chunks (likely noise)
+        if len(audio_data) < 1000:  # Skip chunks smaller than 1KB
+            return
+        
+        # For WebM/Opus audio, we need basic voice activity detection
+        # Since we can't easily decode WebM here, we'll use size and patterns as heuristics
+        
+        # Simple heuristic: WebM chunks with actual speech tend to be larger and more variable
+        # Silent/noise chunks are usually smaller and more uniform
+        
+        # Check if this looks like meaningful audio content
+        if len(audio_data) < 3000:  # Very small chunks are likely silence/noise
+            logger.debug(f"🎤🔇 Skipping small audio chunk: {len(audio_data)} bytes")
+            return
             
-            # Process through STT (this is simplified - in reality you'd need proper STT integration)
-            # For now, we'll simulate text updates
-            # In a real implementation, you'd integrate with the actual STT system
+        logger.debug(f"🎤📡 Processing audio chunk: {len(audio_data)} bytes")
+        
+        # Feed audio bytes to STT system
+        success = stt.feed_audio_bytes(audio_data, metadata={"source": "websocket", "format": "webm"})
+        
+        if success:
+            # Get current transcription result
+            current_text = stt.get_current_text()
             
-            # Check if we have enough audio for transcription
-            if len(audio_float) > 1600:  # ~100ms at 16kHz
-                # Placeholder for STT processing
-                # enhanced_processor.process_text_update("sample text", is_final=False)
-                pass
+            if current_text and current_text.strip():
+                # Filter out obvious nonsense/repeated patterns
+                text_clean = current_text.strip().lower()
+                
+                # Check for repetitive patterns that indicate false positives
+                words = text_clean.split()
+                if len(words) > 3:
+                    # Check if it's mostly repetitive (like "tháng đến tháng đến...")
+                    unique_words = set(words)
+                    repetition_ratio = len(words) / len(unique_words)
+                    
+                    if repetition_ratio > 3:  # Too repetitive, likely false positive
+                        logger.debug(f"🎤🚫 Filtering repetitive transcription: '{current_text}'")
+                        stt.clear_text()  # Clear the false positive
+                        return
+                
+                logger.info(f"🎤📝 STT output: '{current_text}'")
+                
+                # Check if this looks like a complete sentence/phrase
+                is_final = any(current_text.strip().endswith(punct) for punct in ['.', '!', '?']) or \
+                          len(current_text.strip()) > 50  # Long enough to be complete
+                
+                if is_final:
+                    # Clear STT text for next input
+                    stt.clear_text()
+                    logger.info(f"🎤✅ Final transcription: '{current_text}'")
+                    return current_text.strip()
+                else:
+                    logger.debug(f"🎤🔄 Partial transcription: '{current_text}'")
+        else:
+            logger.debug("🎤❌ Failed to feed audio to STT")
     
     except Exception as e:
         logger.error(f"🎤🤖💥 Enhanced audio processing error: {e}")
+    
+    return None
 
 async def process_auto_voice_input(websocket: WebSocket, text: str, voice_components: dict):
     """Process voice input through the chat pipeline automatically."""
@@ -875,13 +1034,13 @@ async def process_auto_voice_input(websocket: WebSocket, text: str, voice_compon
         
         # Create chat request
         request = ChatRequest(
-            message=text,
+            question=text,
             session_id=session_id
         )
         
         # Process through RAG workflow
-        initial_state = create_initial_state(request)
-        config = RunnableConfig(configurable={"session_id": session_id})
+        initial_state = create_initial_state(request.question, request.messages or [], request.session_id)
+        config = RunnableConfig(configurable={"thread_id": session_id})
         
         # Stream response
         await websocket.send_json({
@@ -893,8 +1052,8 @@ async def process_auto_voice_input(websocket: WebSocket, text: str, voice_compon
             state = cast(ChatState, chunk)
             result = extract_results_from_state(state)
             
-            if result and result.response:
-                chunk_text = result.response
+            if result and result.get("answer"):
+                chunk_text = result["answer"]
                 if chunk_text != response_text:
                     new_content = chunk_text[len(response_text):]
                     response_text = chunk_text

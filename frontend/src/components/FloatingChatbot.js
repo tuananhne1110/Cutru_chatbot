@@ -17,7 +17,8 @@ function FloatingChatbot({
   clearChatHistory, 
   createNewSession,
   openCT01Modal,
-  openVoiceChat
+  openVoiceChat,
+  onUploadFiles
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(true);
@@ -145,10 +146,10 @@ function FloatingChatbot({
                 </div>
               )}
             </div>
-            <div ref={messagesEndRef} />
-          </div>
+                          <div ref={messagesEndRef} />
+            </div>
 
-          {/* Input Area */}
+            {/* Input Area */}
           <div className="p-4 bg-white border-t border-gray-200">
             <MessageInput
               inputMessage={inputMessage}
@@ -157,6 +158,7 @@ function FloatingChatbot({
               handleKeyPress={handleKeyPress}
               isLoading={isLoading}
               onVoiceChat={openVoiceChat}
+              onUploadFiles={onUploadFiles}
             />
           </div>
         </div>

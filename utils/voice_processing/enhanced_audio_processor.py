@@ -117,8 +117,7 @@ class EnhancedAudioProcessor:
             self.monitor_thread.start()
             
             logger.info("🎤▶️ Started listening for voice input")
-            if self.on_speech_start:
-                self.on_speech_start()
+            # Don't call callbacks from threads - will be handled externally
             
             return True
             
@@ -149,14 +148,23 @@ class EnhancedAudioProcessor:
         if self.current_text and not self.final_text:
             self.final_text = self.current_text.strip()
         
-        if self.on_speech_end:
-            self.on_speech_end()
-        
-        if self.final_text and self.on_final_text:
-            self.on_final_text(self.final_text)
+        # Note: callbacks will be handled by caller, just set flags
+        self._speech_ended = True
+        self._final_text_ready = bool(self.final_text)
         
         logger.info(f"🎤✅ Voice listening stopped. Final text: '{self.final_text}'")
         return self.final_text
+    
+    def simulate_transcription(self, text: str, is_final: bool = False):
+        """
+        Simulate transcription result for testing purposes.
+        """
+        if is_final:
+            self.final_text = text
+            logger.info(f"🎤✅ Simulated final text: '{text}'")
+        else:
+            self.current_text = text
+            logger.debug(f"🎤📝 Simulated partial text: '{text}'")
     
     def process_audio_chunk(self, audio_data: bytes, 
                            metadata: Optional[Dict[str, Any]] = None) -> None:
@@ -167,7 +175,10 @@ class EnhancedAudioProcessor:
             audio_data: Raw audio data
             metadata: Optional metadata about the audio
         """
+        logger.debug(f"🎤📥 Received audio chunk: {len(audio_data)} bytes")
+        
         if not self.is_listening:
+            logger.warning("🎤❌ Not listening, ignoring audio chunk") 
             return
         
         try:
@@ -175,9 +186,13 @@ class EnhancedAudioProcessor:
             self.last_audio_time = time.time()
             
             # Check for voice activity (simple energy-based detection)
-            if self._has_voice_activity(audio_data):
+            has_voice = self._has_voice_activity(audio_data)
+            logger.debug(f"🎤👁️ Voice activity detected: {has_voice}")
+            
+            if has_voice:
                 # Reset silence timer when voice is detected
                 self.silence_start_time = 0.0
+                logger.debug("🎤🔊 Voice detected - resetting silence timer")
             else:
                 # Start silence timer if not already started
                 if self.silence_start_time == 0.0:
@@ -201,8 +216,7 @@ class EnhancedAudioProcessor:
             if is_final:
                 self.final_text = text.strip()
                 logger.info(f"🎤✅ Final text received: '{self.final_text}'")
-                if self.on_final_text:
-                    self.on_final_text(self.final_text)
+                # Don't call callbacks from threads - will be handled externally
                 self.stop_listening()
             else:
                 # Update current text
@@ -221,9 +235,7 @@ class EnhancedAudioProcessor:
                     if self.sentence_detector and self.current_text:
                         self.sentence_detector.detect_sentence_end(self.current_text)
                     
-                    # Callback for partial text
-                    if self.on_partial_text:
-                        self.on_partial_text(self.current_text)
+                    # Don't call callbacks from threads - will be handled externally
             
         except Exception as e:
             logger.error(f"🎤💥 Error processing text update: {e}")
@@ -231,9 +243,10 @@ class EnhancedAudioProcessor:
     def _has_voice_activity(self, audio_data: bytes, threshold: float = 500.0) -> bool:
         """
         Simple voice activity detection based on audio energy.
+        For WebM/Opus data, we use a simple heuristic.
         
         Args:
-            audio_data: Raw audio data
+            audio_data: Raw audio data (WebM/Opus or PCM)
             threshold: Energy threshold for voice detection
             
         Returns:
@@ -243,13 +256,24 @@ class EnhancedAudioProcessor:
             if len(audio_data) < 2:
                 return False
             
-            # Convert to numpy array and calculate energy
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
-            if audio_array.size == 0:
-                return False
+            # For WebM/Opus data, use size-based heuristic
+            # Larger chunks typically indicate voice activity
+            if len(audio_data) > 1000:  # WebM chunks with voice are usually larger
+                return True
             
-            energy = np.abs(audio_array).mean()
-            return energy > threshold
+            # For PCM data, try energy calculation
+            try:
+                # Check if data length is compatible with int16
+                if len(audio_data) % 2 == 0:
+                    audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                    if audio_array.size > 0:
+                        energy = np.abs(audio_array).mean()
+                        return energy > threshold
+            except (ValueError, TypeError):
+                # Not PCM data, fallback to size heuristic
+                pass
+            
+            return len(audio_data) > 500  # Fallback heuristic
             
         except Exception as e:
             logger.error(f"🎤💥 Error in voice activity detection: {e}")
@@ -275,8 +299,7 @@ class EnhancedAudioProcessor:
                         if self.sentence_detector:
                             self.sentence_detector.detect_sentence_end(self.final_text, force_yield=True)
                     
-                    if self.on_silence_detected:
-                        self.on_silence_detected()
+                    # Don't call callbacks from threads - will be handled externally
                     
                     # Stop listening
                     threading.Thread(target=self.stop_listening, daemon=True).start()

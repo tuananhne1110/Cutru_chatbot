@@ -3,7 +3,7 @@
 # Web Framework & Server
 fastapi==0.116.0
 uvicorn[standard]
-# python-multipart==0.0.6
+python-multipart==0.0.9
 
 # Configuration & Utilities
 python-dotenv==1.1.1
