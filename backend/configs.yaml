@@ -1,0 +1,110 @@
+# system_settings:
+#   logger:
+#     name: "RAGWorkflow"
+#     log_level: "INFO"
+#     log_file: null
+#     enable_performance_logging: true
+#     enable_model_logging: true
+
+models:
+  max_retry_attempts: 5
+  aws_bedrock:
+    llm_model_configs:
+      claude:
+        model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        region_name: "us-east-1"
+        max_tokens: 1000
+        temperature: 0.0
+        top_p: 0.9
+        top_k: null
+        anthropic_version: "bedrock-2023-05-31"
+      llama:
+        model_id: "us.meta.llama4-scout-17b-instruct-v1:0"
+        region_name: "us-east-1"
+        max_gen_len: 2000
+        temperature: 0.0
+        top_p: 0.0
+        top_k: null
+
+    embedding_model_configs:
+      titan:
+        model_id: "amazon.titan-embed-text-v2:0"
+        output_dimension: 1024
+        normalize: true
+
+    guardrails:
+      model_id: "us.meta.llama4-scout-17b-instruct-v1:0"
+      region_name: "us-east-1"
+      guardrail_id: "your-guardrail-id"
+      guardrail_version: "DRAFT"
+      enabled: false
+
+  hugging_face:
+    embedding_model_configs:
+      gte:
+        model_name: "Alibaba-NLP/gte-multilingual-base"
+        device: "cuda"
+        trust_remote_code: true
+        enabled: true
+
+      qwen:
+        model_name: "Qwen/Qwen3-Embedding-0.6B"
+        prompt_name: "query"
+        device: "cuda"
+        normalized: True
+        batch_size: 8
+        max_seq_len: 32000
+        enabled: true
+
+    reranker_model_configs:
+      bge:
+        model_name: "BAAI/bge-reranker-v2-m3"
+        device: "cuda"
+        enabled: true
+
+database:
+  db_type:
+    - database_name: qdrant
+      qdrant_host: "localhost"
+      qdrant_port: 6333
+      qdrant_url: null
+      qdrant_api_key: null
+      collections:
+        - name: "PROCEDURE"
+          description: "Thủ tục hành chính về lĩnh vực cư trú"
+          domain: "cu_tru"
+          collection_name: "thu_tuc_hanh_chinh"
+        - name: "LEGAL"
+          description: "Luật cư trú"
+          domain: "cu_tru"
+          collection_name: "luat_cu_tru"
+
+services:
+  redis:
+    enabled: true
+    # url: "redis://:mypassword@localhost:6379/0"  # nếu dùng DSN thì bỏ qua các field host/port/db/password
+    host: "localhost"
+    port: 6379
+    db: 0
+    password: null
+    ttl_seconds: 900 # 15 phút
+    prefix: "rag"
+    socket_timeout: 2.5
+    retry_on_timeout: true
+    max_connections: 10
+
+  voice:
+    enabled: true
+    model_name: "vinai/PhoWhisper-medium"
+    device: null  # Auto-detect GPU/CPU
+    batch_size: 16
+    num_workers: 2
+    language: "vi"
+    tts_rate: 180
+    tts_volume: 1.0
+    vad_aggressiveness: 2
+    frame_duration: 30
+    sample_rate: 16000
+    min_segment_sec: 2.0
+    max_segment_sec: 3.0
+    overlap_sec: 0.8
